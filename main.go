@@ -206,6 +206,15 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+type LoggingTransport struct {
+	Transport http.RoundTripper
+}
+
+func (t *LoggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	log.Printf("Push Request Header: Authorization: %s", req.Header.Get("Authorization"))
+	return t.Transport.RoundTrip(req)
+}
+
 func sendPushNotifications(db *sql.DB, message string) {
 	log.Printf("Sending push notifications for message: %s", message)
 	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")
@@ -231,6 +240,10 @@ func sendPushNotifications(db *sql.DB, message string) {
 			VAPIDPrivateKey: vapidPrivateKey,
 			VapidExpiration: time.Now().Add(45 * time.Minute),
 			TTL:             30,
+			HTTPClient: &http.Client{
+				Transport: &LoggingTransport{Transport: http.DefaultTransport},
+				Timeout:   30 * time.Second,
+			},
 		})
 		if err != nil {
 			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
