@@ -141,7 +141,28 @@ func initVAPID(db *sql.DB) error {
 func handleInteractions(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			rows, err := db.Query("SELECT id, message, timestamp FROM interactions ORDER BY timestamp ASC")
+			limit := 100
+			if l := r.URL.Query().Get("limit"); l != "" {
+				fmt.Sscanf(l, "%d", &limit)
+			}
+
+			var rows *sql.Rows
+			var err error
+			var isHistory bool
+
+			if after := r.URL.Query().Get("after"); after != "" {
+				// Polling for new messages
+				rows, err = db.Query("SELECT id, message, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+			} else if before := r.URL.Query().Get("before"); before != "" {
+				// Loading history (fetching older messages)
+				isHistory = true
+				rows, err = db.Query("SELECT id, message, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+			} else {
+				// Initial load (latest messages)
+				isHistory = true
+				rows, err = db.Query("SELECT id, message, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+			}
+
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -157,6 +178,14 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 				}
 				interactions = append(interactions, i)
 			}
+
+			// If we fetched history (DESC), we need to reverse to ASC
+			if isHistory {
+				for i, j := 0, len(interactions)-1; i < j; i, j = i+1, j-1 {
+					interactions[i], interactions[j] = interactions[j], interactions[i]
+				}
+			}
+
 			if interactions == nil {
 				interactions = []Interaction{}
 			}
