@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/SherClockHolmes/webpush-go"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -22,6 +23,9 @@ type Interaction struct {
 	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp"`
 }
+
+var vapidPrivateKey string
+var vapidPublicKey string
 
 func main() {
 	address := flag.String("address", "127.0.0.1", "BIND_ADDRESS")
@@ -39,6 +43,10 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	if err := initVAPID(db); err != nil {
+		log.Fatalf("Failed to init VAPID keys: %v", err)
+	}
+
 	staticRoot, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		log.Fatal(err)
@@ -46,6 +54,11 @@ func main() {
 	http.Handle("/", http.FileServer(http.FS(staticRoot)))
 	
 	http.HandleFunc("/interactions", handleInteractions(db))
+	http.HandleFunc("/subscribe", handleSubscribe(db))
+	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"publicKey": vapidPublicKey})
+	})
 
 	addr := fmt.Sprintf("%s:%d", *address, *port)
 	log.Printf("Server listening on %s", addr)
@@ -58,9 +71,50 @@ func initDB(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		message TEXT NOT NULL,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-	);`
+	);
+	CREATE TABLE IF NOT EXISTS subscriptions (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		endpoint TEXT NOT NULL UNIQUE,
+		p256dh TEXT NOT NULL,
+		auth TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS config (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	`
 	_, err := db.Exec(query)
 	return err
+}
+
+func initVAPID(db *sql.DB) error {
+	// Try to load keys
+	row := db.QueryRow("SELECT value FROM config WHERE key = 'vapid_private_key'")
+	err := row.Scan(&vapidPrivateKey)
+	if err == sql.ErrNoRows {
+		// Generate new keys
+		privateKey, publicKey, err := webpush.GenerateVAPIDKeys()
+		if err != nil {
+			return err
+		}
+		vapidPrivateKey = privateKey
+		vapidPublicKey = publicKey
+
+		_, err = db.Exec("INSERT INTO config (key, value) VALUES ('vapid_private_key', ?), ('vapid_public_key', ?)", vapidPrivateKey, vapidPublicKey)
+		if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else {
+		// Loaded private key, get public key
+		row = db.QueryRow("SELECT value FROM config WHERE key = 'vapid_public_key'")
+		if err := row.Scan(&vapidPublicKey); err != nil {
+			return err
+		}
+	}
+	log.Printf("VAPID Public Key: %s", vapidPublicKey)
+	return nil
 }
 
 func handleInteractions(db *sql.DB) http.HandlerFunc {
@@ -103,11 +157,63 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			}
 			id, _ := res.LastInsertId()
 			i.ID = id
-			// We can fetch the timestamp or just return success.
-			// Let's just return the ID for now or 201 Created.
+			
+			// Trigger Push
+			go sendPushNotifications(db, i.Message)
+
 			w.WriteHeader(http.StatusCreated)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func handleSubscribe(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		
+		var sub webpush.Subscription
+		if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		_, err := db.Exec("INSERT OR IGNORE INTO subscriptions (endpoint, p256dh, auth) VALUES (?, ?, ?)", sub.Endpoint, sub.Keys.P256dh, sub.Keys.Auth)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}
+}
+
+func sendPushNotifications(db *sql.DB, message string) {
+	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")
+	if err != nil {
+		log.Printf("Error querying subscriptions: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var sub webpush.Subscription
+		if err := rows.Scan(&sub.Endpoint, &sub.Keys.P256dh, &sub.Keys.Auth); err != nil {
+			continue
+		}
+
+		// Send Notification
+		_, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
+			Subscriber:      "mailto:example@example.com", // Should ideally be configurable
+			VAPIDPublicKey:  vapidPublicKey,
+			VAPIDPrivateKey: vapidPrivateKey,
+			TTL:             30,
+		})
+		if err != nil {
+			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
+			// Optional: Remove invalid subscriptions (404/410)
 		}
 	}
 }
