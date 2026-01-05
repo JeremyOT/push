@@ -1,0 +1,72 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #fff;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    height: 100vh;
+}
+
+.chat-container {
+    width: 100%;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-left: 1px solid #eee;
+    border-right: 1px solid #eee;
+}
+
+.chat-header {
+    padding: 15px;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: #f9f9f9;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.chat-header h1 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #333;
+}
+
+.messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.message {
+    max-width: 75%;
+    padding: 10px 15px;
+    border-radius: 20px;
+    font-size: 1rem;
+    line-height: 1.4;
+    position: relative;
+    word-wrap: break-word;
+}
+
+/* Incoming message style (Gray, Left) */
+.message.received {
+    align-self: flex-start;
+    background-color: #e5e5ea;
+    color: #000;
+    border-bottom-left-radius: 5px;
+}
+
+/* Timestamp */
+.timestamp {
+    font-size: 0.7rem;
+    color: #8e8e93;
+    margin-top: 5px;
+    align-self: flex-start;
+    margin-left: 10px;
+}

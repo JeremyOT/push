@@ -4,9 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Push</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Push Notifications</h1>
-    <div id="messages"></div>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>Push</h1>
+        </div>
+        <div id="messages" class="messages">
+            <!-- Messages will be inserted here -->
+        </div>
+        <!-- Since it's one-way, maybe no input? "Post new interactions by sending JSON POST requests... View messages by visiting..." -->
+        <!-- The README implies the web view is for VIEWING. Sending is done via curl/API. 
+             "Post new interactions by sending JSON POST requests... View messages by visiting..." 
+             But "one way chat" usually implies one person talking. -->
+    </div>
+    <script src="app.js"></script>
 </body>
 </html>
