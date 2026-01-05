@@ -1,13 +1,21 @@
 self.addEventListener('push', function(event) {
-    const message = event.data ? event.data.text() : 'New interaction';
-    
-    const options = {
-        body: message,
-        icon: 'icon.png', // Placeholder
+    let title = 'Push';
+    let options = {
+        icon: 'icon.png',
         badge: 'icon.png'
     };
 
+    if (event.data) {
+        try {
+            const data = event.data.json();
+            title = data.title || 'Push';
+            options.body = data.message || data.body || '';
+        } catch (e) {
+            options.body = event.data.text();
+        }
+    }
+
     event.waitUntil(
-        self.registration.showNotification('Push', options)
+        self.registration.showNotification(title, options)
     );
 });
