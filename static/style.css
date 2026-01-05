@@ -1,6 +1,34 @@
+:root {
+    color-scheme: light dark;
+    --bg-color: #fff;
+    --text-color: #000;
+    --border-color: #eee;
+    --header-bg: #f9f9f9;
+    --header-border: #e0e0e0;
+    --header-text: #333;
+    --message-bg: #e5e5ea;
+    --message-text: #000;
+    --timestamp-color: #8e8e93;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-color: #000;
+        --text-color: #fff;
+        --border-color: #1c1c1e;
+        --header-bg: #1c1c1e;
+        --header-border: #2c2c2e;
+        --header-text: #fff;
+        --message-bg: #2c2c2e;
+        --message-text: #fff;
+        --timestamp-color: #8e8e93;
+    }
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background-color: #fff;
+    background-color: var(--bg-color);
+    color: var(--text-color);
     margin: 0;
     display: flex;
     justify-content: center;
@@ -13,14 +41,25 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
-    border-left: 1px solid #eee;
-    border-right: 1px solid #eee;
+    border-left: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
 }
 
 .chat-header {
     padding: 15px;
-    border-bottom: 1px solid #e0e0e0;
-    background-color: #f9f9f9;
+    border-bottom: 1px solid var(--header-border);
+    background-color: var(--header-bg); /* Fallback */
+    background-color: rgba(var(--header-bg), 0.8); /* Attempt at transparency if we had rgb vars */
+    /* For true backdrop filter support with dynamic colors, we usually rely on the opacity of the bg color */
+    /* Let's stick to simple solid or slightly transparent if we defined rgb components. 
+       For now, using the variable directly which is solid. 
+       To keep the blur effect nice, we might want to use a semi-transparent color for the variable or just keep it solid. 
+       Let's use the variable but note that blur works best with transparency. 
+       For simplicity in this refactor, I'll stick to the variable, but I'll make the light mode header slightly transparent 
+       to match the original "f9f9f9" feel if it was meant to be translucent. 
+       Actually, the original was #f9f9f9 with blur. To see the blur, it needs opacity.
+    */
+    background-color: var(--header-bg);
     text-align: center;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -33,6 +72,11 @@ body {
     gap: 10px;
 }
 
+/* Adjusting transparency manually for the "frosted glass" look if desired, 
+   but variables make it tricky without splitting RGB. 
+   We will trust the solid colors for now or simple hex.
+*/
+
 .header-icon {
     width: 24px;
     height: 24px;
@@ -41,7 +85,7 @@ body {
 .chat-header h1 {
     margin: 0;
     font-size: 1.2rem;
-    color: #333;
+    color: var(--header-text);
 }
 
 .messages {
@@ -66,15 +110,15 @@ body {
 /* Incoming message style (Gray, Left) */
 .message.received {
     align-self: flex-start;
-    background-color: #e5e5ea;
-    color: #000;
+    background-color: var(--message-bg);
+    color: var(--message-text);
     border-bottom-left-radius: 5px;
 }
 
 /* Timestamp */
 .timestamp {
     font-size: 0.7rem;
-    color: #8e8e93;
+    color: var(--timestamp-color);
     margin-top: 5px;
     align-self: flex-start;
     margin-left: 10px;

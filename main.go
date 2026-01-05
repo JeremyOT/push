@@ -68,6 +68,7 @@ func main() {
 
 	addr := fmt.Sprintf("%s:%d", *address, *port)
 	log.Printf("Server listening on %s", addr)
+	log.Printf("Server hostname: %s", serverHostname)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
