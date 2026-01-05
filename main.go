@@ -36,6 +36,7 @@ func main() {
 	port := flag.Int("port", 8089, "PORT")
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
 	hostname := flag.String("hostname", defaultHostname, "HOSTNAME for push notifications")
+	resetVapid := flag.Bool("reset-vapid", false, "Reset VAPID keys")
 	flag.Parse()
 
 	serverHostname = *hostname
@@ -45,6 +46,13 @@ func main() {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
+
+	if *resetVapid {
+		if _, err := db.Exec("DELETE FROM config WHERE key IN ('vapid_private_key', 'vapid_public_key')"); err != nil {
+			log.Fatalf("Failed to reset VAPID keys: %v", err)
+		}
+		log.Println("VAPID keys reset.")
+	}
 
 	if err := initDB(db); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
@@ -221,6 +229,7 @@ func sendPushNotifications(db *sql.DB, message string) {
 			Subscriber:      "mailto:admin@example.com",
 			VAPIDPublicKey:  vapidPublicKey,
 			VAPIDPrivateKey: vapidPrivateKey,
+			VapidExpiration: time.Now().Add(45 * time.Minute),
 			TTL:             30,
 		})
 		if err != nil {
