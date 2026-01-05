@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -26,12 +27,17 @@ type Interaction struct {
 
 var vapidPrivateKey string
 var vapidPublicKey string
+var serverHostname string
 
 func main() {
+	defaultHostname, _ := os.Hostname()
 	address := flag.String("address", "127.0.0.1", "BIND_ADDRESS")
 	port := flag.Int("port", 8089, "PORT")
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
+	hostname := flag.String("hostname", defaultHostname, "HOSTNAME for push notifications")
 	flag.Parse()
+
+	serverHostname = *hostname
 
 	db, err := sql.Open("sqlite3", *dbPath)
 	if err != nil {
@@ -206,7 +212,7 @@ func sendPushNotifications(db *sql.DB, message string) {
 
 		// Send Notification
 		_, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
-			Subscriber:      "mailto:example@example.com", // Should ideally be configurable
+			Subscriber:      fmt.Sprintf("mailto:push@%s", serverHostname),
 			VAPIDPublicKey:  vapidPublicKey,
 			VAPIDPrivateKey: vapidPrivateKey,
 			TTL:             30,
