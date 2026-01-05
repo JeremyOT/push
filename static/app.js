@@ -50,12 +50,25 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
-async function registerServiceWorker() {
+const subscribeBtn = document.getElementById('subscribe-btn');
+
+async function checkSubscription() {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager.getSubscription();
+        if (subscription) {
+            subscribeBtn.style.display = 'none';
+        } else {
+            subscribeBtn.style.display = 'block';
+        }
+    }
+}
+
+async function subscribeToPush() {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
         try {
-            const registration = await navigator.serviceWorker.register('/sw.js');
-            console.log('Service Worker registered');
-
+            const registration = await navigator.serviceWorker.ready;
+            
             const permission = await Notification.requestPermission();
             if (permission !== 'granted') {
                 console.log('Notification permission not granted');
@@ -83,6 +96,7 @@ async function registerServiceWorker() {
                 }
             });
             console.log('Subscribed to push notifications');
+            subscribeBtn.style.display = 'none';
 
         } catch (error) {
             console.error('Service Worker/Push Error:', error);
@@ -90,9 +104,16 @@ async function registerServiceWorker() {
     }
 }
 
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(() => {
+        console.log('Service Worker registered');
+        checkSubscription();
+    });
+}
+
+subscribeBtn.addEventListener('click', subscribeToPush);
+
 // Initial fetch
 fetchMessages();
-registerServiceWorker();
-
 // Poll every 3 seconds
 setInterval(fetchMessages, 3000);
