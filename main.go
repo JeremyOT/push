@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -227,7 +228,12 @@ func sendPushNotifications(db *sql.DB, message string) {
 			// Optional: Remove invalid subscriptions (404/410)
 		} else {
 			defer resp.Body.Close()
-			log.Printf("Sent push to %s (Status: %s)", sub.Endpoint, resp.Status)
+			if resp.StatusCode != http.StatusCreated {
+				body, _ := io.ReadAll(resp.Body)
+				log.Printf("Failed to send push to %s (Status: %s): %s", sub.Endpoint, resp.Status, string(body))
+			} else {
+				log.Printf("Sent push to %s (Status: %s)", sub.Endpoint, resp.Status)
+			}
 		}
 	}
 	log.Printf("Processed %d subscriptions", count)
