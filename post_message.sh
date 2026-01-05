@@ -5,11 +5,12 @@ ADDRESS="127.0.0.1"
 PORT="8089"
 MESSAGE="Hello from CLI"
 TITLE=""
+LINK=""
 
 # Usage help
 usage() {
-    echo "Usage: $0 [message] [title] [port] [address]"
-    echo "Defaults: message=\"$MESSAGE\", title=\"$TITLE\", port=$PORT, address=$ADDRESS"
+    echo "Usage: $0 [message] [title] [link] [port] [address]"
+    echo "Defaults: message=\"$MESSAGE\", title=\"$TITLE\", link=\"$LINK\", port=$PORT, address=$ADDRESS"
     exit 1
 }
 
@@ -27,18 +28,22 @@ if [ ! -z "$2" ]; then
 fi
 
 if [ ! -z "$3" ]; then
-    PORT="$3"
+    LINK="$3"
 fi
 
 if [ ! -z "$4" ]; then
-    ADDRESS="$4"
+    PORT="$4"
 fi
 
-echo "Posting message: \"$MESSAGE\" with title: \"$TITLE\" to http://$ADDRESS:$PORT/interactions"
+if [ ! -z "$5" ]; then
+    ADDRESS="$5"
+fi
+
+echo "Posting message: \"$MESSAGE\" with title: \"$TITLE\" and link: \"$LINK\" to http://$ADDRESS:$PORT/interactions"
 
 curl -X POST \
      -H "Content-Type: application/json" \
-     -d "{\"message\": \"$MESSAGE\", \"title\": \"$TITLE\"}" \
+     -d "{\"message\": \"$MESSAGE\", \"title\": \"$TITLE\", \"link\": \"$LINK\"}" \
      "http://$ADDRESS:$PORT/interactions"
 
 echo -e "\nDone."

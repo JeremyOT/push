@@ -29,6 +29,7 @@ type Interaction struct {
 	ID        int64     `json:"id"`
 	Title     string    `json:"title"`
 	Message   string    `json:"message"`
+	Link      string    `json:"link"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -93,6 +94,7 @@ func initDB(db *sql.DB) error {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT DEFAULT '',
 		message TEXT NOT NULL,
+		link TEXT DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS subscriptions (
@@ -108,8 +110,9 @@ func initDB(db *sql.DB) error {
 	`
 	_, err := db.Exec(query)
 	
-	// Add title column if it doesn't exist (migration for existing DBs)
+	// Add columns if they don't exist (migration)
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN title TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN link TEXT DEFAULT ''")
 	
 	return err
 }
@@ -158,15 +161,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, title, message, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, title, message, link, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, title, message, link, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, title, message, link, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -178,7 +181,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.Timestamp); err != nil {
+				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.Link, &i.Timestamp); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -206,7 +209,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			res, err := db.Exec("INSERT INTO interactions (title, message) VALUES (?, ?)", i.Title, i.Message)
+			res, err := db.Exec("INSERT INTO interactions (title, message, link) VALUES (?, ?, ?)", i.Title, i.Message, i.Link)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -215,7 +218,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			i.ID = id
 			
 			// Trigger Push
-			go sendPushNotifications(db, i.Title, i.Message)
+			go sendPushNotifications(db, i.Title, i.Message, i.Link)
 
 			w.WriteHeader(http.StatusCreated)
 		} else {
@@ -293,12 +296,13 @@ func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, 
 	return fmt.Sprintf("vapid t=%s, k=%s", tokenString, publicKeyStr), nil
 }
 
-func sendPushNotifications(db *sql.DB, title, message string) {
-	log.Printf("Sending push notifications for [%s]: %s", title, message)
+func sendPushNotifications(db *sql.DB, title, message, link string) {
+	log.Printf("Sending push notifications for [%s]: %s (Link: %s)", title, message, link)
 	
 	payload, _ := json.Marshal(map[string]string{
 		"title":   title,
 		"message": message,
+		"link":    link,
 	})
 
 	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")

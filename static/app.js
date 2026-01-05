@@ -7,7 +7,18 @@ let initialLoadComplete = false;
 function createMessageElement(msg) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', 'received');
-    msgDiv.textContent = msg.message;
+    
+    if (msg.link) {
+        const link = document.createElement('a');
+        link.href = msg.link;
+        link.textContent = msg.message;
+        link.target = '_blank';
+        link.style.color = 'inherit';
+        link.style.textDecoration = 'underline';
+        msgDiv.appendChild(link);
+    } else {
+        msgDiv.textContent = msg.message;
+    }
 
     const timeDiv = document.createElement('div');
     timeDiv.classList.add('timestamp');
