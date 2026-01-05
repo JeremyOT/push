@@ -218,7 +218,7 @@ func sendPushNotifications(db *sql.DB, message string) {
 
 		// Send Notification
 		resp, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
-			Subscriber:      fmt.Sprintf("mailto:push@%s", serverHostname),
+			Subscriber:      "mailto:admin@example.com",
 			VAPIDPublicKey:  vapidPublicKey,
 			VAPIDPrivateKey: vapidPrivateKey,
 			TTL:             30,
