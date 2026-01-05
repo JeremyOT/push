@@ -198,6 +198,7 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 }
 
 func sendPushNotifications(db *sql.DB, message string) {
+	log.Printf("Sending push notifications for message: %s", message)
 	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")
 	if err != nil {
 		log.Printf("Error querying subscriptions: %v", err)
@@ -205,14 +206,17 @@ func sendPushNotifications(db *sql.DB, message string) {
 	}
 	defer rows.Close()
 
+	count := 0
 	for rows.Next() {
+		count++
 		var sub webpush.Subscription
 		if err := rows.Scan(&sub.Endpoint, &sub.Keys.P256dh, &sub.Keys.Auth); err != nil {
+			log.Printf("Error scanning subscription: %v", err)
 			continue
 		}
 
 		// Send Notification
-		_, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
+		resp, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
 			Subscriber:      fmt.Sprintf("mailto:push@%s", serverHostname),
 			VAPIDPublicKey:  vapidPublicKey,
 			VAPIDPrivateKey: vapidPrivateKey,
@@ -221,6 +225,10 @@ func sendPushNotifications(db *sql.DB, message string) {
 		if err != nil {
 			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
 			// Optional: Remove invalid subscriptions (404/410)
+		} else {
+			defer resp.Body.Close()
+			log.Printf("Sent push to %s (Status: %s)", sub.Endpoint, resp.Status)
 		}
 	}
+	log.Printf("Processed %d subscriptions", count)
 }
