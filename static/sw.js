@@ -1,8 +1,8 @@
 self.addEventListener('push', function(event) {
     let title = 'Push';
     let options = {
-        icon: 'icon.png',
-        badge: 'icon.png'
+        icon: '/icon.png',
+        badge: '/icon.png'
     };
 
     if (event.data) {
