@@ -1,19 +1,24 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
+	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -206,13 +211,51 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-type LoggingTransport struct {
-	Transport http.RoundTripper
+type VAPIDTransport struct {
+	PrivateKey string
+	PublicKey  string
+	Subject    string
+	Transport  http.RoundTripper
 }
 
-func (t *LoggingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	log.Printf("Push Request Header: Authorization: %s", req.Header.Get("Authorization"))
+func (t *VAPIDTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	origin := fmt.Sprintf("%s://%s", req.URL.Scheme, req.URL.Host)
+	header, err := generateVAPIDHeader(t.Subject, origin, t.PrivateKey, t.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate VAPID header: %v", err)
+	}
+	req.Header.Set("Authorization", header)
+	if t.Transport == nil {
+		return http.DefaultTransport.RoundTrip(req)
+	}
 	return t.Transport.RoundTrip(req)
+}
+
+func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, error) {
+	// Decode private key
+	keyBytes, err := base64.RawURLEncoding.DecodeString(privateKeyStr)
+	if err != nil {
+		return "", err
+	}
+	
+	priv := new(ecdsa.PrivateKey)
+	priv.PublicKey.Curve = elliptic.P256()
+	priv.D = new(big.Int).SetBytes(keyBytes)
+	priv.PublicKey.X, priv.PublicKey.Y = priv.PublicKey.Curve.ScalarBaseMult(keyBytes)
+
+	// Create JWT
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"aud": aud,
+		"exp": time.Now().Add(time.Minute * 20).Unix(),
+		"sub": sub,
+	})
+
+	tokenString, err := token.SignedString(priv)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("vapid t=%s, k=%s", tokenString, publicKeyStr), nil
 }
 
 func sendPushNotifications(db *sql.DB, message string) {
@@ -235,19 +278,21 @@ func sendPushNotifications(db *sql.DB, message string) {
 
 		// Send Notification
 		resp, err := webpush.SendNotification([]byte(message), &sub, &webpush.Options{
-			Subscriber:      "mailto:admin@example.com",
-			VAPIDPublicKey:  vapidPublicKey,
-			VAPIDPrivateKey: vapidPrivateKey,
-			VapidExpiration: time.Now().Add(45 * time.Minute),
-			TTL:             30,
+			// Leave VAPID keys empty to prevent library from generating header
+			Subscriber: "mailto:admin@example.com",
+			TTL:        30,
 			HTTPClient: &http.Client{
-				Transport: &LoggingTransport{Transport: http.DefaultTransport},
-				Timeout:   30 * time.Second,
+				Transport: &VAPIDTransport{
+					PrivateKey: vapidPrivateKey,
+					PublicKey:  vapidPublicKey,
+					Subject:    "mailto:admin@example.com",
+					Transport:  http.DefaultTransport,
+				},
+				Timeout: 30 * time.Second,
 			},
 		})
 		if err != nil {
 			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
-			// Optional: Remove invalid subscriptions (404/410)
 		} else {
 			defer resp.Body.Close()
 			if resp.StatusCode != http.StatusCreated {
