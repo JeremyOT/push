@@ -6,11 +6,12 @@ PORT="8089"
 MESSAGE="Hello from CLI"
 TITLE=""
 LINK=""
+DETAILED_MESSAGE=""
 
 # Usage help
 usage() {
-    echo "Usage: $0 [message] [title] [link] [port] [address]"
-    echo "Defaults: message=\"$MESSAGE\", title=\"$TITLE\", link=\"$LINK\", port=$PORT, address=$ADDRESS"
+    echo "Usage: $0 [message] [title] [link] [detailed_message] [port] [address]"
+    echo "Defaults: message=\"$MESSAGE\", title=\"$TITLE\", link=\"$LINK\", detailed_message=\"$DETAILED_MESSAGE\", port=$PORT, address=$ADDRESS"
     exit 1
 }
 
@@ -32,18 +33,22 @@ if [ ! -z "$3" ]; then
 fi
 
 if [ ! -z "$4" ]; then
-    PORT="$4"
+    DETAILED_MESSAGE="$4"
 fi
 
 if [ ! -z "$5" ]; then
-    ADDRESS="$5"
+    PORT="$5"
 fi
 
-echo "Posting message: \"$MESSAGE\" with title: \"$TITLE\" and link: \"$LINK\" to http://$ADDRESS:$PORT/interactions"
+if [ ! -z "$6" ]; then
+    ADDRESS="$6"
+fi
+
+echo "Posting message: \"$MESSAGE\" with title: \"$TITLE\", link: \"$LINK\" and detailed_message: \"$DETAILED_MESSAGE\" to http://$ADDRESS:$PORT/interactions"
 
 curl -X POST \
      -H "Content-Type: application/json" \
-     -d "{\"message\": \"$MESSAGE\", \"title\": \"$TITLE\", \"link\": \"$LINK\"}" \
+     -d "{\"message\": \"$MESSAGE\", \"title\": \"$TITLE\", \"link\": \"$LINK\", \"detailed_message\": \"$DETAILED_MESSAGE\"}" \
      "http://$ADDRESS:$PORT/interactions"
 
 echo -e "\nDone."

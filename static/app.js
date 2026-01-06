@@ -8,16 +8,18 @@ function createMessageElement(msg) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', 'received');
     
+    const displayMessage = msg.detailed_message || msg.message;
+
     if (msg.link) {
         const link = document.createElement('a');
         link.href = msg.link;
-        link.textContent = msg.message;
+        link.textContent = displayMessage;
         link.target = '_blank';
         link.style.color = 'inherit';
         link.style.textDecoration = 'underline';
         msgDiv.appendChild(link);
     } else {
-        msgDiv.textContent = msg.message;
+        msgDiv.textContent = displayMessage;
     }
 
     const timeDiv = document.createElement('div');
