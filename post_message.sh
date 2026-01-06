@@ -29,11 +29,11 @@ if [ ! -z "$2" ]; then
 fi
 
 if [ ! -z "$3" ]; then
-    LINK="$3"
+    DETAILED_MESSAGE="$3"
 fi
 
 if [ ! -z "$4" ]; then
-    DETAILED_MESSAGE="$4"
+    LINK="$4"
 fi
 
 if [ ! -z "$5" ]; then
