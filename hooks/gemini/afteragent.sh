@@ -1,8 +1,8 @@
 #!/bin/zsh
 
+exit
 INPUT=$(cat)
 echo "${INPUT}" > ~/aa.json
-exit
 NOTIFICATION_TYPE="$(echo "${INPUT}" | jq -r '.notification_type')"
 MESSAGE="$GEMINI_PROJECT_DIR: $(echo "${INPUT}" | jq -r '.message')"
 

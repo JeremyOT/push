@@ -17,6 +17,6 @@ PORT="8089"
 
 curl -X POST \
      -H "Content-Type: application/json" \
-     -d "{\"message\": \"${MESSAGE:0:25}\", \"title\": \"$TITLE\", \"link\": \"\", \"detailed_message\":\"${MESSAGE}\"}" \
+     -d "{\"message\": \"${MESSAGE:0:50}\", \"title\": \"$TITLE\", \"link\": \"\", \"detailed_message\":\"${MESSAGE}\"}" \
      "http://$ADDRESS:$PORT/interactions"
 
