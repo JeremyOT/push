@@ -8,6 +8,14 @@ function createMessageElement(msg) {
     const msgDiv = document.createElement('div');
     msgDiv.classList.add('message', 'received');
     
+    if (msg.title) {
+        const titleDiv = document.createElement('div');
+        titleDiv.style.fontWeight = 'bold';
+        titleDiv.style.marginBottom = '5px';
+        titleDiv.textContent = msg.title;
+        msgDiv.appendChild(titleDiv);
+    }
+
     const displayMessage = msg.detailed_message || msg.message;
 
     if (msg.link) {
@@ -19,7 +27,7 @@ function createMessageElement(msg) {
         link.style.textDecoration = 'underline';
         msgDiv.appendChild(link);
     } else {
-        msgDiv.textContent = displayMessage;
+        msgDiv.appendChild(document.createTextNode(displayMessage));
     }
 
     const timeDiv = document.createElement('div');
