@@ -2,6 +2,7 @@
 
 INPUT=$(cat)
 WD="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .cwd')"
+WD="$(basename "${WD}")"
 MESSAGE="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .llm_response.text')"
 FINISH_REASON="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .llm_response.candidates[0].finishReason')"
 

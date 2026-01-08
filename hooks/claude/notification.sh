@@ -1,9 +1,9 @@
 #!/bin/zsh
 
 INPUT=$(cat)
-#echo "${INPUT}" > ~/note.json
+echo "${INPUT}" > ~/note.json
+exit
 WD="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .cwd')"
-WD="$(basename "${WD}")"
 MESSAGE="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .message')"
 NOTIFICATION_TYPE="$(echo "${INPUT}" | jq -Rnr '[inputs] | join("\\n") | fromjson | .notification_type')"
 
