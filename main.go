@@ -75,7 +75,7 @@ func main() {
 		log.Fatal(err)
 	}
 	http.Handle("/", http.FileServer(http.FS(staticRoot)))
-	
+
 	http.HandleFunc("/interactions", handleInteractions(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
@@ -111,12 +111,12 @@ func initDB(db *sql.DB) error {
 	);
 	`
 	_, err := db.Exec(query)
-	
+
 	// Add columns if they don't exist (migration)
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN title TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN link TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
-	
+
 	return err
 }
 
@@ -219,7 +219,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			}
 			id, _ := res.LastInsertId()
 			i.ID = id
-			
+
 			// Trigger Push
 			go sendPushNotifications(db, i.Title, i.Message, i.Link)
 
@@ -236,7 +236,7 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		
+
 		var sub webpush.Subscription
 		if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -278,7 +278,7 @@ func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, 
 	if err != nil {
 		return "", err
 	}
-	
+
 	priv := new(ecdsa.PrivateKey)
 	priv.PublicKey.Curve = elliptic.P256()
 	priv.D = new(big.Int).SetBytes(keyBytes)
@@ -301,7 +301,7 @@ func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, 
 
 func sendPushNotifications(db *sql.DB, title, message, link string) {
 	log.Printf("Sending push notifications for [%s]: %s (Link: %s)", title, message, link)
-	
+
 	payload, _ := json.Marshal(map[string]string{
 		"title":   title,
 		"message": message,
