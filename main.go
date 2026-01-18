@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"database/sql"
@@ -45,7 +46,32 @@ func main() {
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
 	hostname := flag.String("hostname", defaultHostname, "HOSTNAME for push notifications")
 	resetVapid := flag.Bool("reset-vapid", false, "Reset VAPID keys")
+	message := flag.String("m", "", "Message to send (client mode)")
+	title := flag.String("t", "", "Title of the message (client mode)")
 	flag.Parse()
+
+	if *message != "" {
+		url := fmt.Sprintf("http://%s:%d/interactions", *address, *port)
+		payload := map[string]string{
+			"message": *message,
+			"title":   *title,
+		}
+		jsonPayload, err := json.Marshal(payload)
+		if err != nil {
+			log.Fatalf("Failed to marshal payload: %v", err)
+		}
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+		if err != nil {
+			log.Fatalf("Failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Fatalf("Server returned error: %s - %s", resp.Status, string(body))
+		}
+		fmt.Println("Message sent successfully.")
+		return
+	}
 
 	serverHostname = *hostname
 
