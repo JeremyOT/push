@@ -17,5 +17,11 @@ The application has been updated to support a client mode for sending messages d
 - `-m`: Message content. Presence of this flag triggers client mode.
 - `-t`: Title of the message (optional, used in client mode).
 
+## Build Instructions
+To build the binary, especially on macOS to avoid linker warnings:
+```bash
+go build -ldflags="-w -s" -o push main.go
+```
+
 ## Recent Changes
 - Added `-m` and `-t` flags to support sending messages via CLI without using `curl`.
