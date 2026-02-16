@@ -33,7 +33,20 @@ function createMessageElement(msg) {
     const timeDiv = document.createElement('div');
     timeDiv.classList.add('timestamp');
     const date = new Date(msg.timestamp);
-    timeDiv.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const now = new Date();
+    const diffHours = (now - date) / (1000 * 60 * 60);
+
+    const options = { hour: '2-digit', minute: '2-digit' };
+    if (diffHours > 6) {
+        options.month = 'short';
+        options.day = 'numeric';
+        if (date.getFullYear() !== now.getFullYear()) {
+            options.year = 'numeric';
+        }
+        timeDiv.textContent = date.toLocaleString([], options);
+    } else {
+        timeDiv.textContent = date.toLocaleTimeString([], options);
+    }
 
     const wrapper = document.createElement('div');
     wrapper.style.display = 'flex';
