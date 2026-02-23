@@ -115,6 +115,14 @@ body {
     border-bottom-left-radius: 5px;
 }
 
+/* Outgoing message style (Blue, Right) */
+.message.sent {
+    align-self: flex-end;
+    background-color: #007aff;
+    color: #fff;
+    border-bottom-right-radius: 5px;
+}
+
 /* Timestamp */
 .timestamp {
     font-size: 0.7rem;
@@ -122,4 +130,52 @@ body {
     margin-top: 5px;
     align-self: flex-start;
     margin-left: 10px;
+}
+
+.message.sent + .timestamp {
+    align-self: flex-end;
+    margin-left: 0;
+    margin-right: 10px;
+}
+
+.chat-input {
+    display: none; /* Shown via JS in interactive mode */
+    padding: 10px 15px;
+    border-top: 1px solid var(--border-color);
+    background-color: var(--header-bg);
+    gap: 10px;
+    align-items: flex-end;
+}
+
+.chat-input textarea {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 8px 15px;
+    font-family: inherit;
+    font-size: 1rem;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    resize: none;
+    max-height: 100px;
+    outline: none;
+}
+
+.chat-input button {
+    background-color: #007aff;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-bottom: 4px;
+}
+
+.chat-input button:disabled {
+    background-color: var(--timestamp-color);
+    cursor: default;
 }

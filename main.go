@@ -58,6 +58,7 @@ func main() {
 	appTitle := flag.String("application-title", "", "Custom title for the web application")
 	iconPath := flag.String("icon", "", "Path to a PNG file for custom application icons")
 	staticOutput := flag.String("static-output", "", "Output directory for the static web app content")
+	interactive := flag.Bool("interactive", false, "Enable interactive mode (allow sending messages from the web app)")
 	flag.Parse()
 
 	if *message != "" {
@@ -118,14 +119,14 @@ func main() {
 	}
 
 	if *staticOutput != "" {
-		if err := exportStatic(staticRoot, *staticOutput, *appTitle, *iconPath != ""); err != nil {
+		if err := exportStatic(staticRoot, *staticOutput, *appTitle, *iconPath != "", *interactive); err != nil {
 			log.Fatalf("Failed to export static content: %v", err)
 		}
 		log.Printf("Static content exported to %s", *staticOutput)
 		return
 	}
 
-	http.HandleFunc("/", handleStatic(staticRoot, *appTitle, *iconPath != ""))
+	http.HandleFunc("/", handleStatic(staticRoot, *appTitle, *iconPath != "", *interactive))
 	http.HandleFunc("/interactions", handleInteractions(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +140,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
-func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomIcon bool) ([]byte, string, time.Time, error) {
+func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomIcon bool, interactive bool) ([]byte, string, time.Time, error) {
 	path = strings.TrimPrefix(path, "/")
 	if path == "" {
 		path = "index.html"
@@ -166,7 +167,7 @@ func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomI
 		return nil, "", time.Time{}, err
 	}
 
-	if (path == "index.html" || path == "manifest.json" || path == "sw.js") && (appTitle != "" || hasCustomIcon) {
+	if (path == "index.html" || path == "manifest.json" || path == "sw.js") && (appTitle != "" || hasCustomIcon || interactive) {
 		data, err := io.ReadAll(f)
 		if err != nil {
 			return nil, "", time.Time{}, err
@@ -180,6 +181,9 @@ func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomI
 			if hasCustomIcon {
 				content = strings.ReplaceAll(content, "icon.svg", "icon.png")
 				content = strings.ReplaceAll(content, "type=\"image/svg+xml\"", "type=\"image/png\"")
+			}
+			if interactive {
+				content = strings.ReplaceAll(content, `{"interactive": false}`, `{"interactive": true}`)
 			}
 		} else if path == "manifest.json" {
 			if appTitle != "" {
@@ -206,7 +210,7 @@ func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomI
 	return data, mime.TypeByExtension(filepath.Ext(path)), stat.ModTime(), nil
 }
 
-func exportStatic(staticRoot fs.FS, outputDir string, appTitle string, hasCustomIcon bool) error {
+func exportStatic(staticRoot fs.FS, outputDir string, appTitle string, hasCustomIcon bool, interactive bool) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return err
 	}
@@ -219,7 +223,7 @@ func exportStatic(staticRoot fs.FS, outputDir string, appTitle string, hasCustom
 			return os.MkdirAll(filepath.Join(outputDir, path), 0755)
 		}
 
-		data, _, _, err := getStaticContent(staticRoot, path, appTitle, hasCustomIcon)
+		data, _, _, err := getStaticContent(staticRoot, path, appTitle, hasCustomIcon, interactive)
 		if err != nil {
 			return err
 		}
@@ -228,9 +232,9 @@ func exportStatic(staticRoot fs.FS, outputDir string, appTitle string, hasCustom
 	})
 }
 
-func handleStatic(staticRoot fs.FS, appTitle string, hasCustomIcon bool) http.HandlerFunc {
+func handleStatic(staticRoot fs.FS, appTitle string, hasCustomIcon bool, interactive bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data, contentType, modTime, err := getStaticContent(staticRoot, r.URL.Path, appTitle, hasCustomIcon)
+		data, contentType, modTime, err := getStaticContent(staticRoot, r.URL.Path, appTitle, hasCustomIcon, interactive)
 		if err != nil {
 			if os.IsNotExist(err) {
 				http.NotFound(w, r)
@@ -415,11 +419,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			}
 			id, _ := res.LastInsertId()
 			i.ID = id
+			// Get actual timestamp from DB or just use current
+			i.Timestamp = time.Now()
 
 			// Trigger Push
 			go sendPushNotifications(db, i.Title, i.Message, i.Link)
 
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(i)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

@@ -1,4 +1,7 @@
 const messagesContainer = document.getElementById('messages');
+const config = JSON.parse(document.getElementById('config').textContent);
+const sentIds = new Set(JSON.parse(localStorage.getItem('sentIds') || '[]'));
+
 let newestId = 0;
 let oldestId = 0;
 let isLoadingHistory = false;
@@ -6,7 +9,8 @@ let initialLoadComplete = false;
 
 function createMessageElement(msg) {
     const msgDiv = document.createElement('div');
-    msgDiv.classList.add('message', 'received');
+    const isSent = sentIds.has(msg.id);
+    msgDiv.classList.add('message', isSent ? 'sent' : 'received');
     
     if (msg.title) {
         const titleDiv = document.createElement('div');
@@ -219,6 +223,58 @@ if ('serviceWorker' in navigator) {
 }
 
 subscribeBtn.addEventListener('click', subscribeToPush);
+
+const chatInput = document.getElementById('chat-input');
+const messageText = document.getElementById('message-text');
+const sendBtn = document.getElementById('send-btn');
+
+if (config.interactive) {
+    chatInput.style.display = 'flex';
+    messageText.addEventListener('input', () => {
+        sendBtn.disabled = !messageText.value.trim();
+        messageText.style.height = 'auto';
+        messageText.style.height = (messageText.scrollHeight) + 'px';
+    });
+
+    const sendMessage = async () => {
+        const text = messageText.value.trim();
+        if (!text) return;
+        messageText.value = '';
+        messageText.style.height = 'auto';
+        sendBtn.disabled = true;
+
+        try {
+            const response = await fetch('/interactions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ message: text })
+            });
+            if (!response.ok) throw new Error('Failed to send');
+            
+            const msg = await response.json();
+            sentIds.add(msg.id);
+            localStorage.setItem('sentIds', JSON.stringify(Array.from(sentIds)));
+
+            // Immediately fetch to show it
+            fetchMessages('poll');
+        } catch (error) {
+            console.error('Error sending message:', error);
+            alert('Failed to send message');
+            messageText.value = text;
+            sendBtn.disabled = false;
+        }
+    };
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageText.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+}
 
 // Initial fetch
 fetchMessages('initial');

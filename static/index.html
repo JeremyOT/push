@@ -9,7 +9,7 @@
     <title>Push</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="icon" type="image/png" href="/icon.png">
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -22,11 +22,14 @@
         <div id="messages" class="messages">
             <!-- Messages will be inserted here -->
         </div>
-        <!-- Since it's one-way, maybe no input? "Post new interactions by sending JSON POST requests... View messages by visiting..." -->
-        <!-- The README implies the web view is for VIEWING. Sending is done via curl/API. 
-             "Post new interactions by sending JSON POST requests... View messages by visiting..." 
-             But "one way chat" usually implies one person talking. -->
+        <div id="chat-input" class="chat-input">
+            <textarea id="message-text" placeholder="Send a message..." rows="1"></textarea>
+            <button id="send-btn" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </div>
     </div>
+    <script id="config" type="application/json">{"interactive": false}</script>
     <script src="app.js"></script>
 </body>
 </html>

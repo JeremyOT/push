@@ -19,6 +19,7 @@ The application has been updated to support a client mode for sending messages d
 - `-application-title`: Custom title for the web application (replaces "Push").
 - `-icon`: Path to a PNG file to replace the application's icons (automatically resizes to required sizes).
 - `-static-output`: Output directory to export the fully rendered static web app content.
+- `-interactive`: Enable interactive mode to allow sending messages from the web app.
 
 ## Build Instructions
 To build the binary, especially on macOS to avoid linker warnings:
@@ -27,6 +28,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Added `-interactive` flag to enable sending messages from the web client.
 - Added `-application-title` and `-icon` flags for web app customization.
 - Added `-static-output` flag to export the web app with all customizations.
 - Added `-m` and `-t` flags to support sending messages via CLI.
