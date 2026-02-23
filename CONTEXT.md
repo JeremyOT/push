@@ -9,8 +9,7 @@ This file documents the current state and context of the `push` application.
 The application has been updated to support a client mode for sending messages directly from the CLI.
 
 ### Flags
-- `-address`: Bind address (default: 127.0.0.1)
-- `-port`: Port (default: 8089)
+- `-listen`: Address and port to listen on (default: 127.0.0.1:8089)
 - `-database`: Path to SQLite database (default: ./push.sqlite)
 - `-hostname`: Hostname for push notifications
 - `-reset-vapid`: Reset VAPID keys
