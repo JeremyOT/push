@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -97,7 +98,58 @@ func main() {
 	iconPath := flag.String("icon", "", "Path to a PNG file for custom application icons")
 	staticOutput := flag.String("static-output", "", "Output directory for the static web app content")
 	interactive := flag.Bool("interactive", false, "Enable interactive mode (allow sending messages from the web app)")
+	cliService := flag.Bool("cli-service", false, "Use /service endpoint for interactive CLI chat")
 	flag.Parse()
+
+	if *cliService {
+		url := fmt.Sprintf("http://%s/service", *listenAddr)
+		pr, pw := io.Pipe()
+
+		go func() {
+			defer pw.Close()
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				text := scanner.Text()
+				if text == "" {
+					continue
+				}
+				i := Interaction{Message: text}
+				if err := json.NewEncoder(pw).Encode(i); err != nil {
+					log.Printf("Failed to encode message: %v", err)
+					return
+				}
+			}
+		}()
+
+		resp, err := http.Post(url, "application/x-ndjson", pr)
+		if err != nil {
+			log.Fatalf("Failed to connect to service: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			log.Fatalf("Server error: %s - %s", resp.Status, string(body))
+		}
+
+		dec := json.NewDecoder(resp.Body)
+		fmt.Print("> ")
+		for {
+			var i Interaction
+			if err := dec.Decode(&i); err != nil {
+				if err == io.EOF {
+					break
+				}
+				log.Fatalf("Failed to decode response: %v", err)
+			}
+			author := i.Title
+			if author == "" {
+				author = "User"
+			}
+			fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Format("15:04"), author, i.Message)
+		}
+		return
+	}
 
 	if *message != "" {
 		url := fmt.Sprintf("http://%s/interactions", *listenAddr)
