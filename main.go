@@ -88,7 +88,7 @@ var broadcaster = &Broadcaster{
 
 func main() {
 	defaultHostname, _ := os.Hostname()
-	listenAddr := flag.String("listen", "127.0.0.1:8089", "Address and port to listen on (e.g., 127.0.0.1:8089)")
+	address := flag.String("address", "127.0.0.1:8089", "Address and port to listen on (e.g., 127.0.0.1:8089)")
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
 	hostname := flag.String("hostname", defaultHostname, "HOSTNAME for push notifications")
 	resetVapid := flag.Bool("reset-vapid", false, "Reset VAPID keys")
@@ -102,7 +102,7 @@ func main() {
 	flag.Parse()
 
 	if *cliService {
-		url := fmt.Sprintf("http://%s/service", *listenAddr)
+		url := fmt.Sprintf("http://%s/service", *address)
 		pr, pw := io.Pipe()
 
 		go func() {
@@ -152,7 +152,7 @@ func main() {
 	}
 
 	if *message != "" {
-		url := fmt.Sprintf("http://%s/interactions", *listenAddr)
+		url := fmt.Sprintf("http://%s/interactions", *address)
 		payload := map[string]string{
 			"message": *message,
 			"title":   *title,
@@ -225,9 +225,9 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"publicKey": vapidPublicKey})
 	})
 
-	log.Printf("Server listening on %s", *listenAddr)
+	log.Printf("Server listening on %s", *address)
 	log.Printf("Server hostname: %s", serverHostname)
-	log.Fatal(http.ListenAndServe(*listenAddr, nil))
+	log.Fatal(http.ListenAndServe(*address, nil))
 }
 
 func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomIcon bool, interactive bool) ([]byte, string, time.Time, error) {
