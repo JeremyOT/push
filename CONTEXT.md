@@ -20,6 +20,14 @@ The application has been updated to support a client mode for sending messages d
 - `-static-output`: Output directory to export the fully rendered static web app content.
 - `-interactive`: Enable interactive mode to allow sending messages from the web app.
 
+## API Endpoints
+- `GET /interactions`: Fetch messages (supports `after`, `before`, and `limit` parameters).
+- `POST /interactions`: Send a new message.
+- `GET /service`: Stream user messages as NDJSON. Supports `timestamp` query parameter.
+- `POST /service`: Stream a set of messages as NDJSON to be sent.
+- `GET /vapid-public-key`: Get the VAPID public key for push subscriptions.
+- `POST /subscribe`: Register a new push subscription.
+
 ## Build Instructions
 To build the binary, especially on macOS to avoid linker warnings:
 ```bash
@@ -27,6 +35,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Added `/service` streaming endpoint for NDJSON-based real-time interaction.
 - Added `-interactive` flag to enable sending messages from the web client.
 - Added `-application-title` and `-icon` flags for web app customization.
 - Added `-static-output` flag to export the web app with all customizations.

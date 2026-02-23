@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -46,6 +47,43 @@ var vapidPrivateKey string
 var vapidPublicKey string
 var serverHostname string
 var customIcons = make(map[string][]byte)
+
+type Broadcaster struct {
+	subscribers map[chan Interaction]bool
+	mu          sync.Mutex
+}
+
+func (b *Broadcaster) Subscribe() chan Interaction {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	ch := make(chan Interaction, 10)
+	b.subscribers[ch] = true
+	return ch
+}
+
+func (b *Broadcaster) Unsubscribe(ch chan Interaction) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.subscribers, ch)
+	close(ch)
+}
+
+func (b *Broadcaster) Broadcast(i Interaction) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for ch := range b.subscribers {
+		select {
+		case ch <- i:
+		default:
+			// Buffer full, skip this subscriber or drop connection?
+			// For now, just skip to avoid blocking.
+		}
+	}
+}
+
+var broadcaster = &Broadcaster{
+	subscribers: make(map[chan Interaction]bool),
+}
 
 func main() {
 	defaultHostname, _ := os.Hostname()
@@ -128,6 +166,7 @@ func main() {
 
 	http.HandleFunc("/", handleStatic(staticRoot, *appTitle, *iconPath != "", *interactive))
 	http.HandleFunc("/interactions", handleInteractions(db))
+	http.HandleFunc("/service", handleService(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -413,24 +452,108 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user) VALUES (?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser)
-			if err != nil {
+			if err := saveInteraction(db, &i); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			id, _ := res.LastInsertId()
-			i.ID = id
-			// Get actual timestamp from DB or just use current
-			i.Timestamp = time.Now()
-
-			// Trigger Push
-			go sendPushNotifications(db, i.Title, i.Message, i.Link)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(i)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}
+}
+
+func saveInteraction(db *sql.DB, i *Interaction) error {
+	res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user) VALUES (?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser)
+	if err != nil {
+		return err
+	}
+	id, _ := res.LastInsertId()
+	i.ID = id
+	// Get actual timestamp from DB or just use current
+	i.Timestamp = time.Now()
+
+	// Trigger Push
+	go sendPushNotifications(db, i.Title, i.Message, i.Link)
+	// Broadcast for streaming
+	broadcaster.Broadcast(*i)
+	return nil
+}
+
+func handleService(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		// Handle incoming messages if any
+		if r.Body != nil {
+			go func() {
+				dec := json.NewDecoder(r.Body)
+				for {
+					var i Interaction
+					if err := dec.Decode(&i); err != nil {
+						if err != io.EOF {
+							log.Printf("Error decoding service message: %v", err)
+						}
+						return
+					}
+					if err := saveInteraction(db, &i); err != nil {
+						log.Printf("Error saving service interaction: %v", err)
+					}
+				}
+			}()
+		}
+
+		timestamp := time.Now()
+		if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
+			if ts, err := time.Parse(time.RFC3339, tsStr); err == nil {
+				timestamp = ts
+			} else if ts, err := time.Parse("2006-01-02 15:04:05", tsStr); err == nil {
+				timestamp = ts
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		// Send missed messages since timestamp
+		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", timestamp)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var i Interaction
+				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Timestamp); err == nil {
+					json.NewEncoder(w).Encode(i)
+					flusher.Flush()
+				}
+			}
+		}
+
+		ch := broadcaster.Subscribe()
+		defer broadcaster.Unsubscribe(ch)
+
+		for {
+			select {
+			case i, ok := <-ch:
+				if !ok {
+					return
+				}
+				if i.IsUser {
+					if err := json.NewEncoder(w).Encode(i); err != nil {
+						return
+					}
+					flusher.Flush()
+				}
+			case <-r.Context().Done():
+				return
+			}
 		}
 	}
 }
