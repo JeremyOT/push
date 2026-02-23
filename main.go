@@ -10,17 +10,23 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"io/fs"
 	"log"
 	"math/big"
+	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/image/draw"
 )
 
 //go:embed static/*
@@ -38,6 +44,7 @@ type Interaction struct {
 var vapidPrivateKey string
 var vapidPublicKey string
 var serverHostname string
+var customIcons = make(map[string][]byte)
 
 func main() {
 	defaultHostname, _ := os.Hostname()
@@ -48,6 +55,9 @@ func main() {
 	resetVapid := flag.Bool("reset-vapid", false, "Reset VAPID keys")
 	message := flag.String("m", "", "Message to send (client mode)")
 	title := flag.String("t", "", "Title of the message (client mode)")
+	appTitle := flag.String("application-title", "", "Custom title for the web application")
+	iconPath := flag.String("icon", "", "Path to a PNG file for custom application icons")
+	staticOutput := flag.String("static-output", "", "Output directory for the static web app content")
 	flag.Parse()
 
 	if *message != "" {
@@ -100,8 +110,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	http.Handle("/", http.FileServer(http.FS(staticRoot)))
 
+	if *iconPath != "" {
+		if err := loadCustomIcons(*iconPath); err != nil {
+			log.Fatalf("Failed to load custom icons: %v", err)
+		}
+	}
+
+	if *staticOutput != "" {
+		if err := exportStatic(staticRoot, *staticOutput, *appTitle, *iconPath != ""); err != nil {
+			log.Fatalf("Failed to export static content: %v", err)
+		}
+		log.Printf("Static content exported to %s", *staticOutput)
+		return
+	}
+
+	http.HandleFunc("/", handleStatic(staticRoot, *appTitle, *iconPath != ""))
 	http.HandleFunc("/interactions", handleInteractions(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +137,152 @@ func main() {
 	log.Printf("Server listening on %s", addr)
 	log.Printf("Server hostname: %s", serverHostname)
 	log.Fatal(http.ListenAndServe(addr, nil))
+}
+
+func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomIcon bool) ([]byte, string, time.Time, error) {
+	path = strings.TrimPrefix(path, "/")
+	if path == "" {
+		path = "index.html"
+	}
+
+	if data, ok := customIcons[path]; ok {
+		return data, "image/png", time.Now(), nil
+	}
+
+	if hasCustomIcon && path == "icon.svg" {
+		if data, ok := customIcons["icon.png"]; ok {
+			return data, "image/png", time.Now(), nil
+		}
+	}
+
+	f, err := staticRoot.Open(path)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+
+	if (path == "index.html" || path == "manifest.json" || path == "sw.js") && (appTitle != "" || hasCustomIcon) {
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return nil, "", time.Time{}, err
+		}
+		content := string(data)
+		if path == "index.html" {
+			if appTitle != "" {
+				content = strings.ReplaceAll(content, "<title>Push</title>", "<title>"+appTitle+"</title>")
+				content = strings.ReplaceAll(content, "<h1>Push</h1>", "<h1>"+appTitle+"</h1>")
+			}
+			if hasCustomIcon {
+				content = strings.ReplaceAll(content, "icon.svg", "icon.png")
+				content = strings.ReplaceAll(content, "type=\"image/svg+xml\"", "type=\"image/png\"")
+			}
+		} else if path == "manifest.json" {
+			if appTitle != "" {
+				content = strings.ReplaceAll(content, `"name": "Push"`, `"name": "`+appTitle+`"`)
+				content = strings.ReplaceAll(content, `"short_name": "Push"`, `"short_name": "`+appTitle+`"`)
+			}
+			if hasCustomIcon {
+				content = strings.ReplaceAll(content, "/icon.svg", "/icon.png")
+				content = strings.ReplaceAll(content, "image/svg+xml", "image/png")
+			}
+		} else if path == "sw.js" {
+			if appTitle != "" {
+				content = strings.ReplaceAll(content, "let title = 'Push';", "let title = '"+appTitle+"';")
+				content = strings.ReplaceAll(content, "title = data.title || 'Push';", "title = data.title || '"+appTitle+"';")
+			}
+		}
+		return []byte(content), mime.TypeByExtension(filepath.Ext(path)), stat.ModTime(), nil
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+	return data, mime.TypeByExtension(filepath.Ext(path)), stat.ModTime(), nil
+}
+
+func exportStatic(staticRoot fs.FS, outputDir string, appTitle string, hasCustomIcon bool) error {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+
+	return fs.WalkDir(staticRoot, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.MkdirAll(filepath.Join(outputDir, path), 0755)
+		}
+
+		data, _, _, err := getStaticContent(staticRoot, path, appTitle, hasCustomIcon)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(filepath.Join(outputDir, path), data, 0644)
+	})
+}
+
+func handleStatic(staticRoot fs.FS, appTitle string, hasCustomIcon bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data, contentType, modTime, err := getStaticContent(staticRoot, r.URL.Path, appTitle, hasCustomIcon)
+		if err != nil {
+			if os.IsNotExist(err) {
+				http.NotFound(w, r)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		http.ServeContent(w, r, r.URL.Path, modTime, bytes.NewReader(data))
+	}
+}
+
+func loadCustomIcons(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	img, err := png.Decode(f)
+	if err != nil {
+		return fmt.Errorf("failed to decode PNG: %v", err)
+	}
+
+	sizes := map[string]int{
+		"icon-128.png":          128,
+		"icon-192.png":          192,
+		"icon.png":              512,
+		"apple-touch-icon.png":  180,
+	}
+
+	for name, size := range sizes {
+		data, err := resizeImage(img, size)
+		if err != nil {
+			return fmt.Errorf("failed to resize %s: %v", name, err)
+		}
+		customIcons[name] = data
+	}
+
+	return nil
+}
+
+func resizeImage(src image.Image, size int) ([]byte, error) {
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	draw.BiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, dst); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 func initDB(db *sql.DB) error {

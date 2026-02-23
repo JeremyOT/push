@@ -16,6 +16,9 @@ The application has been updated to support a client mode for sending messages d
 - `-reset-vapid`: Reset VAPID keys
 - `-m`: Message content. Presence of this flag triggers client mode.
 - `-t`: Title of the message (optional, used in client mode).
+- `-application-title`: Custom title for the web application (replaces "Push").
+- `-icon`: Path to a PNG file to replace the application's icons (automatically resizes to required sizes).
+- `-static-output`: Output directory to export the fully rendered static web app content.
 
 ## Build Instructions
 To build the binary, especially on macOS to avoid linker warnings:
@@ -24,4 +27,6 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
-- Added `-m` and `-t` flags to support sending messages via CLI without using `curl`.
+- Added `-application-title` and `-icon` flags for web app customization.
+- Added `-static-output` flag to export the web app with all customizations.
+- Added `-m` and `-t` flags to support sending messages via CLI.
