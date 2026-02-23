@@ -1,6 +1,5 @@
 const messagesContainer = document.getElementById('messages');
 const config = JSON.parse(document.getElementById('config').textContent);
-const sentIds = new Set(JSON.parse(localStorage.getItem('sentIds') || '[]'));
 
 let newestId = 0;
 let oldestId = 0;
@@ -9,8 +8,7 @@ let initialLoadComplete = false;
 
 function createMessageElement(msg) {
     const msgDiv = document.createElement('div');
-    const isSent = sentIds.has(msg.id);
-    msgDiv.classList.add('message', isSent ? 'sent' : 'received');
+    msgDiv.classList.add('message', msg.is_user ? 'sent' : 'received');
     
     if (msg.title) {
         const titleDiv = document.createElement('div');
@@ -249,14 +247,10 @@ if (config.interactive) {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ message: text })
+                body: JSON.stringify({ message: text, is_user: true })
             });
             if (!response.ok) throw new Error('Failed to send');
             
-            const msg = await response.json();
-            sentIds.add(msg.id);
-            localStorage.setItem('sentIds', JSON.stringify(Array.from(sentIds)));
-
             // Immediately fetch to show it
             fetchMessages('poll');
         } catch (error) {

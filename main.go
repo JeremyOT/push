@@ -38,6 +38,7 @@ type Interaction struct {
 	Message         string    `json:"message"`
 	DetailedMessage string    `json:"detailed_message"`
 	Link            string    `json:"link"`
+	IsUser          bool      `json:"is_user"`
 	Timestamp       time.Time `json:"timestamp"`
 }
 
@@ -297,6 +298,7 @@ func initDB(db *sql.DB) error {
 		message TEXT NOT NULL,
 		detailed_message TEXT DEFAULT '',
 		link TEXT DEFAULT '',
+		is_user BOOLEAN DEFAULT 0,
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE IF NOT EXISTS subscriptions (
@@ -316,6 +318,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN title TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN link TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN is_user BOOLEAN DEFAULT 0")
 
 	return err
 }
@@ -364,15 +367,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -384,7 +387,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.Timestamp); err != nil {
+				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Timestamp); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -412,7 +415,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link) VALUES (?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link)
+			res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user) VALUES (?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
