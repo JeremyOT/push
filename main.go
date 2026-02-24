@@ -494,6 +494,13 @@ func runCliClient(address string) {
 	url := fmt.Sprintf("http://%s/service", address)
 	pr, pw := io.Pipe()
 
+	req, err := http.NewRequest("POST", url, pr)
+	if err != nil {
+		log.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-ndjson")
+	req.ContentLength = -1
+
 	go func() {
 		defer pw.Close()
 		scanner := bufio.NewScanner(os.Stdin)
@@ -502,7 +509,7 @@ func runCliClient(address string) {
 			if text == "" {
 				continue
 			}
-			i := Interaction{Message: text}
+			i := Interaction{Message: text, IsUser: true}
 			if err := json.NewEncoder(pw).Encode(i); err != nil {
 				log.Printf("Failed to encode message: %v", err)
 				return
@@ -510,7 +517,8 @@ func runCliClient(address string) {
 		}
 	}()
 
-	resp, err := http.Post(url, "application/x-ndjson", pr)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Fatalf("Failed to connect to service: %v", err)
 	}
