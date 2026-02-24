@@ -76,8 +76,7 @@ func (b *Broadcaster) Broadcast(i Interaction) {
 		select {
 		case ch <- i:
 		default:
-			// Buffer full, skip this subscriber or drop connection?
-			// For now, just skip to avoid blocking.
+			// Buffer full, skip this subscriber
 		}
 	}
 }
@@ -393,7 +392,6 @@ func initVAPID(db *sql.DB) error {
 			return err
 		}
 	}
-	log.Printf("VAPID Public Key: %s", vapidPublicKey)
 	return nil
 }
 
@@ -480,7 +478,6 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	}
 	id, _ := res.LastInsertId()
 	i.ID = id
-	// Use UTC to match SQLite CURRENT_TIMESTAMP
 	i.Timestamp = time.Now().UTC()
 
 	// Trigger Push
@@ -491,60 +488,52 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 }
 
 func runCliClient(address string) {
-	url := fmt.Sprintf("http://%s/service", address)
-	pr, pw := io.Pipe()
-
-	req, err := http.NewRequest("POST", url, pr)
-	if err != nil {
-		log.Fatalf("Failed to create request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/x-ndjson")
-	req.ContentLength = -1
-
-	// Start sending messages in a goroutine
+	// 1. Receiver: Stream from GET /service
 	go func() {
-		defer pw.Close()
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			text := scanner.Text()
-			if text == "" {
-				continue
+		resp, err := http.Get(fmt.Sprintf("http://%s/service", address))
+		if err != nil {
+			log.Fatalf("Failed to connect for receiving: %v", err)
+		}
+		defer resp.Body.Close()
+
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var i Interaction
+			if err := dec.Decode(&i); err != nil {
+				if err == io.EOF {
+					break
+				}
+				log.Fatalf("\rStream error: %v", err)
 			}
-			i := Interaction{Message: text}
-			if err := json.NewEncoder(pw).Encode(i); err != nil {
-				return
+			if i.ID == 0 {
+				continue // Heartbeat
 			}
+			author := i.Title
+			if author == "" {
+				author = "User"
+			}
+			fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 		}
 	}()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Fatalf("Server error: %s - %s", resp.Status, string(body))
-	}
-
-	dec := json.NewDecoder(resp.Body)
+	// 2. Sender: POST to /service
+	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("> ")
-	for {
-		var i Interaction
-		if err := dec.Decode(&i); err != nil {
-			if err == io.EOF {
-				break
-			}
-			log.Fatalf("Stream error: %v", err)
+	for scanner.Scan() {
+		text := scanner.Text()
+		if text == "" {
+			fmt.Print("> ")
+			continue
 		}
-		author := i.Title
-		if author == "" {
-			author = "User"
+		i := Interaction{Message: text}
+		data, _ := json.Marshal(i)
+		resp, err := http.Post(fmt.Sprintf("http://%s/service", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
+		if err != nil {
+			fmt.Printf("Send error: %v\n", err)
+		} else {
+			resp.Body.Close()
 		}
-		// Convert UTC from server to local time
-		fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
+		fmt.Print("> ")
 	}
 }
 
@@ -556,32 +545,25 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Set headers and flush immediately to signal start of stream
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
-		// Read incoming messages in a goroutine
-		if r.Body != nil {
-			go func() {
-				dec := json.NewDecoder(r.Body)
-				for {
-					var i Interaction
-					if err := dec.Decode(&i); err != nil {
-						return
-					}
-					// Ensure CLI messages are system messages
-					i.IsUser = false
-					if err := saveInteraction(db, &i); err != nil {
-						log.Printf("Error saving interaction: %v", err)
-					}
+		incoming := make(chan Interaction)
+		go func() {
+			defer close(incoming)
+			dec := json.NewDecoder(r.Body)
+			for {
+				var i Interaction
+				if err := dec.Decode(&i); err != nil {
+					return
 				}
-			}()
-		}
+				incoming <- i
+			}
+		}()
 
-		// Only send messages from "now" onwards
 		startTime := time.Now().UTC()
 		if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
 			if ts, err := time.Parse(time.RFC3339, tsStr); err == nil {
@@ -591,21 +573,25 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Send any missed user messages since startTime
+		ch := broadcaster.Subscribe()
+		defer broadcaster.Unsubscribe(ch)
+
+		sentIds := make(map[int64]bool)
 		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
 				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Timestamp); err == nil {
+					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()
 				}
 			}
 		}
 
-		ch := broadcaster.Subscribe()
-		defer broadcaster.Unsubscribe(ch)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
 
 		for {
 			select {
@@ -613,13 +599,22 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				if !ok {
 					return
 				}
-				// The service only returns user messages to the client
-				if i.IsUser {
+				if i.IsUser && !sentIds[i.ID] {
 					if err := json.NewEncoder(w).Encode(i); err != nil {
 						return
 					}
 					flusher.Flush()
 				}
+			case i, ok := <-incoming:
+				if !ok {
+					incoming = nil
+					continue
+				}
+				i.IsUser = false
+				saveInteraction(db, &i)
+			case <-ticker.C:
+				w.Write([]byte("{}\n"))
+				flusher.Flush()
 			case <-r.Context().Done():
 				return
 			}
@@ -697,8 +692,6 @@ func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, 
 }
 
 func sendPushNotifications(db *sql.DB, title, message, link string) {
-	log.Printf("Sending push notifications for [%s]: %s (Link: %s)", title, message, link)
-
 	payload, _ := json.Marshal(map[string]string{
 		"title":   title,
 		"message": message,
@@ -707,17 +700,13 @@ func sendPushNotifications(db *sql.DB, title, message, link string) {
 
 	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")
 	if err != nil {
-		log.Printf("Error querying subscriptions: %v", err)
 		return
 	}
 	defer rows.Close()
 
-	count := 0
 	for rows.Next() {
-		count++
 		var sub webpush.Subscription
 		if err := rows.Scan(&sub.Endpoint, &sub.Keys.P256dh, &sub.Keys.Auth); err != nil {
-			log.Printf("Error scanning subscription: %v", err)
 			continue
 		}
 
@@ -735,17 +724,8 @@ func sendPushNotifications(db *sql.DB, title, message, link string) {
 				Timeout: 30 * time.Second,
 			},
 		})
-		if err != nil {
-			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
-		} else {
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusCreated {
-				body, _ := io.ReadAll(resp.Body)
-				log.Printf("Failed to send push to %s (Status: %s): %s", sub.Endpoint, resp.Status, string(body))
-			} else {
-				log.Printf("Sent push to %s (Status: %s)", sub.Endpoint, resp.Status)
-			}
+		if err == nil {
+			resp.Body.Close()
 		}
 	}
-	log.Printf("Processed %d subscriptions", count)
 }
