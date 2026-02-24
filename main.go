@@ -97,11 +97,11 @@ func main() {
 	iconPath := flag.String("icon", "", "Path to a PNG file for custom application icons")
 	staticOutput := flag.String("static-output", "", "Output directory for the static web app content")
 	interactive := flag.Bool("interactive", false, "Enable interactive mode (allow sending messages from the web app)")
-	cliService := flag.Bool("cli-service", false, "Use /service endpoint for interactive CLI chat")
+	cliService := flag.String("cli-service", "", "Enable interactive CLI mode (modes: text, json, jsonr)")
 	flag.Parse()
 
-	if *cliService {
-		runCliClient(*address)
+	if *cliService != "" {
+		runCliClient(*address, *cliService)
 		return
 	}
 
@@ -487,7 +487,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	return nil
 }
 
-func runCliClient(address string) {
+func runCliClient(address string, mode string) {
 	// Receiver: Stream from GET /service
 	go func() {
 		resp, err := http.Get(fmt.Sprintf("http://%s/service", address))
@@ -508,24 +508,44 @@ func runCliClient(address string) {
 			if i.ID == 0 {
 				continue // Heartbeat
 			}
-			author := i.Title
-			if author == "" {
-				author = "User"
+
+			if mode == "json" || mode == "jsonr" {
+				data, _ := json.Marshal(i)
+				fmt.Printf("%s\n", string(data))
+			} else {
+				author := i.Title
+				if author == "" {
+					author = "User"
+				}
+				fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 			}
-			fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 		}
 	}()
 
 	// Sender: POST to /service?stream=false
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Print("> ")
+	if mode == "text" || mode == "" || mode == "jsonr" {
+		fmt.Print("> ")
+	}
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" {
-			fmt.Print("> ")
+			if mode == "text" || mode == "" || mode == "jsonr" {
+				fmt.Print("> ")
+			}
 			continue
 		}
-		i := Interaction{Message: text}
+
+		var i Interaction
+		if mode == "json" {
+			if err := json.Unmarshal([]byte(text), &i); err != nil {
+				fmt.Printf("Invalid JSON input: %v\n", err)
+				continue
+			}
+		} else {
+			i = Interaction{Message: text}
+		}
+
 		data, _ := json.Marshal(i)
 		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
 		if err == nil {
@@ -533,7 +553,10 @@ func runCliClient(address string) {
 		} else {
 			fmt.Printf("Send error: %v\n", err)
 		}
-		fmt.Print("> ")
+
+		if mode == "text" || mode == "" || mode == "jsonr" {
+			fmt.Print("> ")
+		}
 	}
 }
 

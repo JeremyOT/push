@@ -19,7 +19,10 @@ The application has been updated to support a client mode for sending messages d
 - `-icon`: Path to a PNG file to replace the application's icons (automatically resizes to required sizes).
 - `-static-output`: Output directory to export the fully rendered static web app content.
 - `-interactive`: Enable interactive mode to allow sending messages from the web app.
-- `-cli-service`: Enable interactive CLI mode using the `/service` endpoint.
+- `-cli-service`: Enable interactive CLI mode (modes: `text`, `json`, `jsonr`).
+    - `text`: Standard text input/formatted output.
+    - `json`: NDJSON input and output.
+    - `jsonr`: Text input and NDJSON output.
 
 ## API Endpoints
 - `GET /interactions`: Fetch messages (supports `after`, `before`, and `limit` parameters).
@@ -36,6 +39,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Added modes (`text`, `json`, `jsonr`) to `--cli-service` for flexible input/output.
 - Added `--cli-service` flag for real-time interactive CLI chat.
 - Added `/service` streaming endpoint for NDJSON-based real-time interaction.
 - Added `-interactive` flag to enable sending messages from the web client.
