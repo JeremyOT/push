@@ -480,8 +480,8 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	}
 	id, _ := res.LastInsertId()
 	i.ID = id
-	// Get actual timestamp from DB or just use current
-	i.Timestamp = time.Now()
+	// Use UTC to match SQLite CURRENT_TIMESTAMP
+	i.Timestamp = time.Now().UTC()
 
 	// Trigger Push
 	go sendPushNotifications(db, i.Title, i.Message, i.Link)
@@ -499,6 +499,7 @@ func runCliClient(address string) {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/x-ndjson")
+	// Forcing chunked encoding and informing the server we want to stream
 	req.ContentLength = -1
 
 	go func() {
@@ -509,7 +510,8 @@ func runCliClient(address string) {
 			if text == "" {
 				continue
 			}
-			i := Interaction{Message: text, IsUser: true}
+			// CLI messages are system messages (is_user: false)
+			i := Interaction{Message: text}
 			if err := json.NewEncoder(pw).Encode(i); err != nil {
 				log.Printf("Failed to encode message: %v", err)
 				return
@@ -544,7 +546,8 @@ func runCliClient(address string) {
 		if author == "" {
 			author = "User"
 		}
-		fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Format("15:04"), author, i.Message)
+		// Display timestamp in local time
+		fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 	}
 }
 
@@ -555,6 +558,13 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 			return
 		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		// Flush headers immediately so client can start sending/receiving
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
 
 		// Handle incoming messages if any
 		if r.Body != nil {
@@ -568,6 +578,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 						}
 						return
 					}
+					log.Printf("Service received message: %s", i.Message)
 					// Messages from service are system messages by default (is_user=false)
 					// unless specified otherwise.
 					if err := saveInteraction(db, &i); err != nil {
@@ -577,19 +588,14 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			}()
 		}
 
-		timestamp := time.Now()
+		timestamp := time.Now().UTC()
 		if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
 			if ts, err := time.Parse(time.RFC3339, tsStr); err == nil {
-				timestamp = ts
+				timestamp = ts.UTC()
 			} else if ts, err := time.Parse("2006-01-02 15:04:05", tsStr); err == nil {
-				timestamp = ts
+				timestamp = ts.UTC()
 			}
 		}
-
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		flusher.Flush()
 
 		// Send missed messages since timestamp
 		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", timestamp)
