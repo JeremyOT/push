@@ -140,7 +140,7 @@ body {
 
 .chat-input {
     display: none; /* Shown via JS in interactive mode */
-    padding: 10px 15px;
+    padding: 10px 15px 20px 15px;
     border-top: 1px solid var(--border-color);
     background-color: var(--header-bg);
     gap: 10px;
