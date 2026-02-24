@@ -488,7 +488,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 }
 
 func runCliClient(address string) {
-	// 1. Receiver: Stream from GET /service
+	// Receiver: Stream from GET /service
 	go func() {
 		resp, err := http.Get(fmt.Sprintf("http://%s/service", address))
 		if err != nil {
@@ -516,7 +516,7 @@ func runCliClient(address string) {
 		}
 	}()
 
-	// 2. Sender: POST to /service
+	// Sender: POST to /service?stream=false
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Print("> ")
 	for scanner.Scan() {
@@ -527,11 +527,11 @@ func runCliClient(address string) {
 		}
 		i := Interaction{Message: text}
 		data, _ := json.Marshal(i)
-		resp, err := http.Post(fmt.Sprintf("http://%s/service", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
-		if err != nil {
-			fmt.Printf("Send error: %v\n", err)
-		} else {
+		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
+		if err == nil {
 			resp.Body.Close()
+		} else {
+			fmt.Printf("Send error: %v\n", err)
 		}
 		fmt.Print("> ")
 	}
@@ -542,6 +542,17 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		if r.Method == http.MethodPost && r.URL.Query().Get("stream") == "false" {
+			dec := json.NewDecoder(r.Body)
+			var i Interaction
+			if err := dec.Decode(&i); err == nil {
+				i.IsUser = false
+				saveInteraction(db, &i)
+			}
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 
