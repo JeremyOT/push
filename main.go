@@ -102,21 +102,8 @@ func main() {
 	flag.Parse()
 
 	if *cliService {
-		// Start the server in the background
-		go func() {
-			if err := http.ListenAndServe(*address, nil); err != nil {
-				log.Fatalf("Server failed: %v", err)
-			}
-		}()
-
-		// Give the server a moment to start
-		time.Sleep(200 * time.Millisecond)
-
 		runCliClient(*address)
-
-		// After CLI exits, we want the server to keep running in the foreground
-		log.Println("CLI exited, server continuing in foreground...")
-		select {}
+		return
 	}
 
 	if *message != "" {
