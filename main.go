@@ -499,9 +499,9 @@ func runCliClient(address string) {
 		log.Fatalf("Failed to create request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/x-ndjson")
-	// Forcing chunked encoding and informing the server we want to stream
 	req.ContentLength = -1
 
+	// Start sending messages in a goroutine
 	go func() {
 		defer pw.Close()
 		scanner := bufio.NewScanner(os.Stdin)
@@ -510,10 +510,8 @@ func runCliClient(address string) {
 			if text == "" {
 				continue
 			}
-			// CLI messages are system messages (is_user: false)
 			i := Interaction{Message: text}
 			if err := json.NewEncoder(pw).Encode(i); err != nil {
-				log.Printf("Failed to encode message: %v", err)
 				return
 			}
 		}
@@ -522,7 +520,7 @@ func runCliClient(address string) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatalf("Failed to connect to service: %v", err)
+		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -539,14 +537,13 @@ func runCliClient(address string) {
 			if err == io.EOF {
 				break
 			}
-			log.Printf("Failed to decode response: %v", err)
-			return
+			log.Fatalf("Stream error: %v", err)
 		}
 		author := i.Title
 		if author == "" {
 			author = "User"
 		}
-		// Display timestamp in local time
+		// Convert UTC from server to local time
 		fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 	}
 }
@@ -559,46 +556,43 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Set headers and flush immediately to signal start of stream
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
-		// Flush headers immediately so client can start sending/receiving
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 
-		// Handle incoming messages if any
+		// Read incoming messages in a goroutine
 		if r.Body != nil {
 			go func() {
 				dec := json.NewDecoder(r.Body)
 				for {
 					var i Interaction
 					if err := dec.Decode(&i); err != nil {
-						if err != io.EOF {
-							log.Printf("Error decoding service message: %v", err)
-						}
 						return
 					}
-					log.Printf("Service received message: %s", i.Message)
-					// Messages from service are system messages by default (is_user=false)
-					// unless specified otherwise.
+					// Ensure CLI messages are system messages
+					i.IsUser = false
 					if err := saveInteraction(db, &i); err != nil {
-						log.Printf("Error saving service interaction: %v", err)
+						log.Printf("Error saving interaction: %v", err)
 					}
 				}
 			}()
 		}
 
-		timestamp := time.Now().UTC()
+		// Only send messages from "now" onwards
+		startTime := time.Now().UTC()
 		if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
 			if ts, err := time.Parse(time.RFC3339, tsStr); err == nil {
-				timestamp = ts.UTC()
+				startTime = ts.UTC()
 			} else if ts, err := time.Parse("2006-01-02 15:04:05", tsStr); err == nil {
-				timestamp = ts.UTC()
+				startTime = ts.UTC()
 			}
 		}
 
-		// Send missed messages since timestamp
-		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", timestamp)
+		// Send any missed user messages since startTime
+		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -619,6 +613,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				if !ok {
 					return
 				}
+				// The service only returns user messages to the client
 				if i.IsUser {
 					if err := json.NewEncoder(w).Encode(i); err != nil {
 						return
