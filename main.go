@@ -102,53 +102,21 @@ func main() {
 	flag.Parse()
 
 	if *cliService {
-		url := fmt.Sprintf("http://%s/service", *address)
-		pr, pw := io.Pipe()
-
+		// Start the server in the background
 		go func() {
-			defer pw.Close()
-			scanner := bufio.NewScanner(os.Stdin)
-			for scanner.Scan() {
-				text := scanner.Text()
-				if text == "" {
-					continue
-				}
-				i := Interaction{Message: text}
-				if err := json.NewEncoder(pw).Encode(i); err != nil {
-					log.Printf("Failed to encode message: %v", err)
-					return
-				}
+			if err := http.ListenAndServe(*address, nil); err != nil {
+				log.Fatalf("Server failed: %v", err)
 			}
 		}()
 
-		resp, err := http.Post(url, "application/x-ndjson", pr)
-		if err != nil {
-			log.Fatalf("Failed to connect to service: %v", err)
-		}
-		defer resp.Body.Close()
+		// Give the server a moment to start
+		time.Sleep(200 * time.Millisecond)
 
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Fatalf("Server error: %s - %s", resp.Status, string(body))
-		}
+		runCliClient(*address)
 
-		dec := json.NewDecoder(resp.Body)
-		fmt.Print("> ")
-		for {
-			var i Interaction
-			if err := dec.Decode(&i); err != nil {
-				if err == io.EOF {
-					break
-				}
-				log.Fatalf("Failed to decode response: %v", err)
-			}
-			author := i.Title
-			if author == "" {
-				author = "User"
-			}
-			fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Format("15:04"), author, i.Message)
-		}
-		return
+		// After CLI exits, we want the server to keep running in the foreground
+		log.Println("CLI exited, server continuing in foreground...")
+		select {}
 	}
 
 	if *message != "" {
@@ -535,6 +503,56 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	return nil
 }
 
+func runCliClient(address string) {
+	url := fmt.Sprintf("http://%s/service", address)
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer pw.Close()
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			text := scanner.Text()
+			if text == "" {
+				continue
+			}
+			i := Interaction{Message: text}
+			if err := json.NewEncoder(pw).Encode(i); err != nil {
+				log.Printf("Failed to encode message: %v", err)
+				return
+			}
+		}
+	}()
+
+	resp, err := http.Post(url, "application/x-ndjson", pr)
+	if err != nil {
+		log.Fatalf("Failed to connect to service: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Fatalf("Server error: %s - %s", resp.Status, string(body))
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	fmt.Print("> ")
+	for {
+		var i Interaction
+		if err := dec.Decode(&i); err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Printf("Failed to decode response: %v", err)
+			return
+		}
+		author := i.Title
+		if author == "" {
+			author = "User"
+		}
+		fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Format("15:04"), author, i.Message)
+	}
+}
+
 func handleService(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
@@ -555,6 +573,8 @@ func handleService(db *sql.DB) http.HandlerFunc {
 						}
 						return
 					}
+					// Messages from service are system messages by default (is_user=false)
+					// unless specified otherwise.
 					if err := saveInteraction(db, &i); err != nil {
 						log.Printf("Error saving service interaction: %v", err)
 					}
@@ -574,6 +594,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/x-ndjson")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
+		flusher.Flush()
 
 		// Send missed messages since timestamp
 		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", timestamp)
