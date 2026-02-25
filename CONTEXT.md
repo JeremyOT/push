@@ -39,6 +39,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Suppressed push notifications for user-sent messages (`is_user: true`) while maintaining immediate broadcast.
+- Broadened `/service` stream to include all messages (both user and service) for real-time updates across all clients.
 - Fixed push notification delivery by reverting to standard `webpush-go` VAPID handling and removing custom `VAPIDTransport`.
 - Resolved `BadJwtToken` and `P256 point not on curve` errors occurring on Go 1.25.
 - Standardized VAPID expiration to 45 minutes for improved Apple Push Service (APNs) compatibility.
