@@ -478,9 +478,11 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	i.ID = id
 	i.Timestamp = time.Now().UTC()
 
-	// Trigger Push
-	go sendPushNotifications(db, i.Title, i.Message, i.Link)
-	// Broadcast for streaming
+	// Trigger Push for non-user messages only
+	if !i.IsUser {
+		go sendPushNotifications(db, i.Title, i.Message, i.Link)
+	}
+	// Broadcast for streaming to all clients
 	broadcaster.Broadcast(*i)
 	return nil
 }
@@ -609,7 +611,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		defer broadcaster.Unsubscribe(ch)
 
 		sentIds := make(map[int64]bool)
-		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE is_user = 1 AND timestamp > ? ORDER BY id ASC", startTime)
+		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -631,7 +633,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				if !ok {
 					return
 				}
-				if i.IsUser && !sentIds[i.ID] {
+				if !sentIds[i.ID] {
 					if err := json.NewEncoder(w).Encode(i); err != nil {
 						return
 					}
