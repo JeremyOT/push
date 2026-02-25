@@ -39,6 +39,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed push notification delivery by reverting to standard `webpush-go` VAPID handling and removing custom `VAPIDTransport`.
+- Resolved `BadJwtToken` and `P256 point not on curve` errors occurring on Go 1.25.
+- Standardized VAPID expiration to 45 minutes for improved Apple Push Service (APNs) compatibility.
 - Added modes (`text`, `json`, `jsonr`) to `--cli-service` for flexible input/output.
 - Added `--cli-service` flag for real-time interactive CLI chat.
 - Added `/service` streaming endpoint for NDJSON-based real-time interaction.

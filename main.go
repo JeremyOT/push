@@ -3,11 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"database/sql"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,7 +13,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"math/big"
 	"mime"
 	"net/http"
 	"os"
@@ -26,7 +22,6 @@ import (
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
-	"github.com/golang-jwt/jwt/v5"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/image/draw"
 )
@@ -383,6 +378,7 @@ func initVAPID(db *sql.DB) error {
 		if err != nil {
 			return err
 		}
+		log.Printf("initVAPID: Generated new VAPID keys")
 	} else if err != nil {
 		return err
 	} else {
@@ -391,7 +387,9 @@ func initVAPID(db *sql.DB) error {
 		if err := row.Scan(&vapidPublicKey); err != nil {
 			return err
 		}
+		log.Printf("initVAPID: Loaded existing VAPID keys")
 	}
+	log.Printf("initVAPID: Public Key: %s", vapidPublicKey)
 	return nil
 }
 
@@ -678,54 +676,9 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-type VAPIDTransport struct {
-	PrivateKey string
-	PublicKey  string
-	Subject    string
-	Transport  http.RoundTripper
-}
-
-func (t *VAPIDTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	origin := fmt.Sprintf("%s://%s", req.URL.Scheme, req.URL.Host)
-	header, err := generateVAPIDHeader(t.Subject, origin, t.PrivateKey, t.PublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate VAPID header: %v", err)
-	}
-	req.Header.Set("Authorization", header)
-	if t.Transport == nil {
-		return http.DefaultTransport.RoundTrip(req)
-	}
-	return t.Transport.RoundTrip(req)
-}
-
-func generateVAPIDHeader(sub, aud, privateKeyStr, publicKeyStr string) (string, error) {
-	// Decode private key
-	keyBytes, err := base64.RawURLEncoding.DecodeString(privateKeyStr)
-	if err != nil {
-		return "", err
-	}
-
-	priv := new(ecdsa.PrivateKey)
-	priv.PublicKey.Curve = elliptic.P256()
-	priv.D = new(big.Int).SetBytes(keyBytes)
-	priv.PublicKey.X, priv.PublicKey.Y = priv.PublicKey.Curve.ScalarBaseMult(keyBytes)
-
-	// Create JWT
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
-		"aud": aud,
-		"exp": time.Now().Add(time.Minute * 20).Unix(),
-		"sub": sub,
-	})
-
-	tokenString, err := token.SignedString(priv)
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("vapid t=%s, k=%s", tokenString, publicKeyStr), nil
-}
-
 func sendPushNotifications(db *sql.DB, title, message, link string) {
+	log.Printf("Sending push notifications for [%s]: %s (Link: %s)", title, message, link)
+
 	payload, _ := json.Marshal(map[string]string{
 		"title":   title,
 		"message": message,
@@ -734,32 +687,42 @@ func sendPushNotifications(db *sql.DB, title, message, link string) {
 
 	rows, err := db.Query("SELECT endpoint, p256dh, auth FROM subscriptions")
 	if err != nil {
+		log.Printf("Error querying subscriptions: %v", err)
 		return
 	}
 	defer rows.Close()
 
+	count := 0
 	for rows.Next() {
+		count++
 		var sub webpush.Subscription
 		if err := rows.Scan(&sub.Endpoint, &sub.Keys.P256dh, &sub.Keys.Auth); err != nil {
+			log.Printf("Error scanning subscription: %v", err)
 			continue
 		}
 
 		// Send Notification
 		resp, err := webpush.SendNotification(payload, &sub, &webpush.Options{
-			Subscriber: "mailto:admin@example.com",
-			TTL:        30,
+			Subscriber:      "admin@example.com",
+			VAPIDPublicKey:  vapidPublicKey,
+			VAPIDPrivateKey: vapidPrivateKey,
+			VapidExpiration: time.Now().Add(45 * time.Minute),
+			TTL:             30,
 			HTTPClient: &http.Client{
-				Transport: &VAPIDTransport{
-					PrivateKey: vapidPrivateKey,
-					PublicKey:  vapidPublicKey,
-					Subject:    "mailto:admin@example.com",
-					Transport:  http.DefaultTransport,
-				},
 				Timeout: 30 * time.Second,
 			},
 		})
-		if err == nil {
-			resp.Body.Close()
+		if err != nil {
+			log.Printf("Failed to send push to %s: %v", sub.Endpoint, err)
+		} else {
+			defer resp.Body.Close()
+			if resp.StatusCode >= 400 {
+				body, _ := io.ReadAll(resp.Body)
+				log.Printf("Failed to send push to %s (Status: %s): %s", sub.Endpoint, resp.Status, string(body))
+			} else {
+				log.Printf("Sent push to %s (Status: %s)", sub.Endpoint, resp.Status)
+			}
 		}
 	}
+	log.Printf("Processed %d subscriptions", count)
 }
