@@ -19,10 +19,12 @@ The application has been updated to support a client mode for sending messages d
 - `-icon`: Path to a PNG file to replace the application's icons (automatically resizes to required sizes).
 - `-static-output`: Output directory to export the fully rendered static web app content.
 - `-interactive`: Enable interactive mode to allow sending messages from the web app.
-- `-cli-service`: Enable interactive CLI mode (modes: `text`, `json`, `jsonr`).
+- `-cli-service`: Enable interactive CLI mode (modes: `text`, `json`, `jsonr`, `tmux`).
     - `text`: Standard text input/formatted output.
     - `json`: NDJSON input and output.
     - `jsonr`: Text input and NDJSON output.
+    - `tmux`: Forwards user messages to a specified tmux pane.
+- `-tmux-target`: Target tmux pane for `tmux` mode (e.g., session:window.pane).
 
 ## API Endpoints
 - `GET /interactions`: Fetch messages (supports `after`, `before`, and `limit` parameters).
@@ -51,3 +53,7 @@ go build -ldflags="-w -s" -o push main.go
 - Added `-application-title` and `-icon` flags for web app customization.
 - Added `-static-output` flag to export the web app with all customizations.
 - Added `-m` and `-t` flags to support sending messages via CLI.
+- Added `tmux` mode to `--cli-service` for forwarding user messages to a tmux pane.
+- Added `-tmux-target` flag to specify the destination tmux pane.
+- Improved `tmux` mode reliability by splitting `send-keys` and adding a 100ms delay before `Enter`.
+- Added start/exit notification messages for `tmux` mode to inform web clients of the forwarding state.

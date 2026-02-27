@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -92,11 +93,12 @@ func main() {
 	iconPath := flag.String("icon", "", "Path to a PNG file for custom application icons")
 	staticOutput := flag.String("static-output", "", "Output directory for the static web app content")
 	interactive := flag.Bool("interactive", false, "Enable interactive mode (allow sending messages from the web app)")
-	cliService := flag.String("cli-service", "", "Enable interactive CLI mode (modes: text, json, jsonr)")
+	cliService := flag.String("cli-service", "", "Enable interactive CLI mode (modes: text, json, jsonr, tmux)")
+	tmuxTarget := flag.String("tmux-target", "", "Target tmux pane for 'tmux' mode (e.g., session:window.pane)")
 	flag.Parse()
 
 	if *cliService != "" {
-		runCliClient(*address, *cliService)
+		runCliClient(*address, *cliService, *tmuxTarget)
 		return
 	}
 
@@ -487,7 +489,25 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	return nil
 }
 
-func runCliClient(address string, mode string) {
+func runCliClient(address string, mode string, tmuxTarget string) {
+	if mode == "tmux" && tmuxTarget == "" {
+		log.Fatal("tmux mode requires --tmux-target")
+	}
+
+	sendMsg := func(text string, title string) {
+		i := Interaction{Message: text, Title: title}
+		data, _ := json.Marshal(i)
+		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	if mode == "tmux" {
+		sendMsg(fmt.Sprintf("Now forwarding responses to %s", tmuxTarget), "tmux-service")
+		defer sendMsg("No longer forwarding responses", "tmux-service")
+	}
+
 	// Receiver: Stream from GET /service
 	go func() {
 		resp, err := http.Get(fmt.Sprintf("http://%s/service", address))
@@ -512,6 +532,22 @@ func runCliClient(address string, mode string) {
 			if mode == "json" || mode == "jsonr" {
 				data, _ := json.Marshal(i)
 				fmt.Printf("%s\n", string(data))
+			} else if mode == "tmux" {
+				if i.IsUser {
+					// Forward messages from the web app (user) to tmux
+					// Send the message
+					cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, i.Message)
+					if err := cmd.Run(); err != nil {
+						log.Printf("\rFailed to send keys to tmux: %v", err)
+					}
+					// Small sleep before Enter
+					time.Sleep(100 * time.Millisecond)
+					// Send Enter
+					cmd = exec.Command("tmux", "send-keys", "-t", tmuxTarget, "Enter")
+					if err := cmd.Run(); err != nil {
+						log.Printf("\rFailed to send Enter to tmux: %v", err)
+					}
+				}
 			} else {
 				author := i.Title
 				if author == "" {
