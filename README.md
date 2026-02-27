@@ -16,13 +16,56 @@ BIND_ADDRESS defaults to 127.0.0.1
 PORT defaults to 8089
 DATABASE defaults to "./push.sqlite"
 
-Post new interactions by sending JSON POST requests to http://BIND_ADDRESS:PORT/interactions with the body
+Post new interactions by sending JSON POST requests to http://BIND_ADDRESS:PORT/interactions with the body:
 
-{"message": MESSAGE}
+```json
+{
+  "title": "Optional Title",
+  "message": "The interaction text",
+  "detailed_message": "Optional longer message",
+  "link": "https://example.com/optional-link"
+}
+```
 
-Where MESSAGE is the interaction text.
+View messages by visiting http://BIND_ADDRESS:PORT.
 
-View messages by visiting http://BIND_ADDRESS:PORT
+Services & Advanced Usage
+-------------------------
+
+Push provides several ways to integrate with other services and tools.
+
+### 1. Simple Messaging (The `/interactions` Endpoint)
+
+The easiest way to send a message is using a standard JSON POST request, as seen in `post_message.sh`:
+
+```bash
+curl -X POST \
+     -H "Content-Type: application/json" \
+     -d '{"message": "Hello World", "title": "My Service"}' \
+     "http://localhost:8089/interactions"
+```
+
+### 2. Streaming Service (The `/service` Endpoint)
+
+For real-time integration, the `/service` endpoint uses Newline Delimited JSON (NDJSON) to stream messages.
+
+*   **Receive Stream:** `GET /service` will keep the connection open and stream new interactions as they occur.
+    *   Use `GET /service?timestamp=2026-02-26T12:00:00Z` to receive messages since a specific time (RFC3339 or `YYYY-MM-DD HH:MM:SS`).
+*   **Send Messages:** `POST /service?stream=false` allows sending a message via NDJSON without opening a stream.
+*   **Bi-directional Stream:** `POST /service` allows you to both send and receive messages over a single persistent connection.
+
+### 3. CLI Service Mode
+
+The `push` binary includes a built-in CLI client to interact with a running Push server:
+
+```bash
+./push --address=localhost:8089 --cli-service=[MODE]
+```
+
+**Modes:**
+*   `text` (Default): An interactive chat-like interface.
+*   `json`: Outputs each received message as a JSON object on a new line. It also expects JSON input for sending messages. Ideal for piping to tools like `jq`.
+*   `jsonr`: Interactive mode like `text` but optimized for certain terminal environments.
 
 Implementation
 --------------
