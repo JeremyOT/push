@@ -5,7 +5,6 @@ import urllib.request
 import os
 
 def main():
-    exit(0)
     try:
         # Read input from stdin
         raw_input = sys.stdin.read()

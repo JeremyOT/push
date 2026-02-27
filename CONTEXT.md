@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed Gemini hooks (`afteragent.py`, `aftermodel.py`) to properly extract full model responses and enabled the `afteragent` hook.
 - Suppressed push notifications for user-sent messages (`is_user: true`) while maintaining immediate broadcast.
 - Broadened `/service` stream to include all messages (both user and service) for real-time updates across all clients.
 - Fixed push notification delivery by reverting to standard `webpush-go` VAPID handling and removing custom `VAPIDTransport`.

@@ -23,25 +23,27 @@ def main():
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
         
-        # Logic to get the last model message
-        # .llm_request.messages | [.[] | select(.role == "model")] | .[-1].content
-        message_content = "null"
-        llm_request = data.get("llm_request", {})
-        messages = llm_request.get("messages", [])
-        model_messages = [m for m in messages if m.get("role") == "model"]
-        if model_messages:
-            message_content = model_messages[-1].get("content", "")
+        llm_response = data.get("llm_response", {})
+        short_response = llm_response.get("text") or 'null'
+
+        # Logic to get the current model message
+        message_content = short_response
+        candidates = llm_response.get("candidates", [])
+        if candidates:
+            # Try to get the full content from the candidate if text is short
+            candidate_content = candidates[0].get("content", {})
+            parts = candidate_content.get("parts", [])
+            if parts:
+                message_content = "".join([p.get("text", "") for p in parts])
             
         # Finish reason
         # .llm_response.candidates[0].finishReason
         finish_reason = "null"
-        llm_response = data.get("llm_response", {})
-        candidates = llm_response.get("candidates", [])
         if candidates:
             finish_reason = candidates[0].get("finishReason", "null")
-        short_response = llm_response.get("text") or 'null'
+
         # Check exit conditions
-        if not finish_reason or finish_reason == "null" or short_response == "null" or message_content == "null":
+        if not finish_reason or finish_reason == "null" or short_response == "null":
             return
 
         notification_type = "Done"
