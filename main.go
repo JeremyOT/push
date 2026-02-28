@@ -545,7 +545,11 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		}
 		sendMsg(msg, "tmux-service")
 		defer func() {
-			sendMsg("No longer forwarding responses", "tmux-service")
+			exitMsg := "No longer forwarding responses"
+			if clientID != "" {
+				exitMsg += fmt.Sprintf(" (Client ID: %s)", clientID)
+			}
+			sendMsg(exitMsg, "tmux-service")
 			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
 		}()
 	}
@@ -623,10 +627,12 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 					if i.IsUser {
 						msg := i.Message
 						if clientID != "" {
-							if strings.HasPrefix(msg, clientID+": ") {
-								msg = strings.TrimPrefix(msg, clientID+": ")
-							} else if strings.HasPrefix(msg, clientID+" ") {
-								msg = strings.TrimPrefix(msg, clientID+" ")
+							prefix1 := clientID + ": "
+							prefix2 := clientID + " "
+							if strings.HasPrefix(strings.ToLower(msg), strings.ToLower(prefix1)) {
+								msg = msg[len(prefix1):]
+							} else if strings.HasPrefix(strings.ToLower(msg), strings.ToLower(prefix2)) {
+								msg = msg[len(prefix2):]
 							} else {
 								continue // Ignore messages not matching clientID
 							}
