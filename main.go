@@ -693,7 +693,7 @@ loop:
 				// Stdin closed (Ctrl-D)
 				if mode == "tmux" {
 					// Check if we are interactive
-					if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) == 0 {
+					if stat, err := os.Stdin.Stat(); err == nil && (stat.Mode() & os.ModeCharDevice) == 0 {
 						// Not a terminal, block indefinitely to keep receiving
 						select {
 						case <-ctx.Done():
