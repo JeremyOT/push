@@ -58,3 +58,6 @@ go build -ldflags="-w -s" -o push main.go
 - Added `-tmux-target` flag to specify the destination tmux pane.
 - Improved `tmux` mode reliability by splitting `send-keys` and adding a 100ms delay before `Enter`.
 - Added start/exit notification messages for `tmux` mode to inform web clients of the forwarding state.
+- Added reconnection logic with exponential backoff for `--cli-service` to handle connection losses gracefully.
+- Improved `--cli-service` reliability by tracking message timestamps to avoid data loss during reconnection.
+- Redirected all `--cli-service` connection logs and errors to `stderr` for better piping support.

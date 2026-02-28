@@ -494,6 +494,8 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		log.Fatal("tmux mode requires --tmux-target")
 	}
 
+	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
+
 	sendMsg := func(text string, title string) {
 		i := Interaction{Message: text, Title: title}
 		data, _ := json.Marshal(i)
@@ -510,63 +512,93 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 
 	// Receiver: Stream from GET /service
 	go func() {
-		resp, err := http.Get(fmt.Sprintf("http://%s/service", address))
-		if err != nil {
-			log.Fatalf("Failed to connect for receiving: %v", err)
-		}
-		defer resp.Body.Close()
-
-		dec := json.NewDecoder(resp.Body)
+		backoff := 1 * time.Second
+		var lastTimestamp time.Time
 		for {
-			var i Interaction
-			if err := dec.Decode(&i); err != nil {
-				if err == io.EOF {
+			url := fmt.Sprintf("http://%s/service", address)
+			if !lastTimestamp.IsZero() {
+				url += "?timestamp=" + lastTimestamp.Format(time.RFC3339)
+			}
+			resp, err := http.Get(url)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
+				if needsPrompt {
+					fmt.Print("> ")
+				}
+				time.Sleep(backoff)
+				backoff *= 2
+				if backoff > 30*time.Second {
+					backoff = 30 * time.Second
+				}
+				continue
+			}
+			backoff = 1 * time.Second // Reset backoff on success
+
+			dec := json.NewDecoder(resp.Body)
+			for {
+				var i Interaction
+				if err := dec.Decode(&i); err != nil {
+					resp.Body.Close()
+					if err == io.EOF {
+						fmt.Fprintf(os.Stderr, "\rConnection closed by server. Reconnecting...\n")
+					} else {
+						fmt.Fprintf(os.Stderr, "\rStream error: %v. Reconnecting...\n", err)
+					}
+					if needsPrompt {
+						fmt.Print("> ")
+					}
 					break
 				}
-				log.Fatalf("\rStream error: %v", err)
-			}
-			if i.ID == 0 {
-				continue // Heartbeat
-			}
+				if i.ID == 0 {
+					continue // Heartbeat
+				}
+				if i.Timestamp.After(lastTimestamp) {
+					lastTimestamp = i.Timestamp
+				}
 
-			if mode == "json" || mode == "jsonr" {
-				data, _ := json.Marshal(i)
-				fmt.Printf("%s\n", string(data))
-			} else if mode == "tmux" {
-				if i.IsUser {
-					// Forward messages from the web app (user) to tmux
-					// Send the message
-					cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, i.Message)
-					if err := cmd.Run(); err != nil {
-						log.Printf("\rFailed to send keys to tmux: %v", err)
+				if mode == "json" || mode == "jsonr" {
+					data, _ := json.Marshal(i)
+					fmt.Printf("%s\n", string(data))
+				} else if mode == "tmux" {
+					if i.IsUser {
+						// Forward messages from the web app (user) to tmux
+						// Send the message
+						cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, i.Message)
+						if err := cmd.Run(); err != nil {
+							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v\n", err)
+						}
+						// Small sleep before Enter
+						time.Sleep(100 * time.Millisecond)
+						// Send Enter
+						cmd = exec.Command("tmux", "send-keys", "-t", tmuxTarget, "Enter")
+						if err := cmd.Run(); err != nil {
+							fmt.Fprintf(os.Stderr, "\rFailed to send Enter to tmux: %v\n", err)
+						}
+						if needsPrompt {
+							fmt.Print("> ")
+						}
 					}
-					// Small sleep before Enter
-					time.Sleep(100 * time.Millisecond)
-					// Send Enter
-					cmd = exec.Command("tmux", "send-keys", "-t", tmuxTarget, "Enter")
-					if err := cmd.Run(); err != nil {
-						log.Printf("\rFailed to send Enter to tmux: %v", err)
+				} else {
+					author := i.Title
+					if author == "" {
+						author = "User"
 					}
+					fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 				}
-			} else {
-				author := i.Title
-				if author == "" {
-					author = "User"
-				}
-				fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 			}
+			time.Sleep(1 * time.Second) // Small delay before reconnecting
 		}
 	}()
 
 	// Sender: POST to /service?stream=false
 	scanner := bufio.NewScanner(os.Stdin)
-	if mode == "text" || mode == "" || mode == "jsonr" {
+	if needsPrompt {
 		fmt.Print("> ")
 	}
 	for scanner.Scan() {
 		text := scanner.Text()
 		if text == "" {
-			if mode == "text" || mode == "" || mode == "jsonr" {
+			if needsPrompt {
 				fmt.Print("> ")
 			}
 			continue
@@ -575,7 +607,10 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		var i Interaction
 		if mode == "json" {
 			if err := json.Unmarshal([]byte(text), &i); err != nil {
-				fmt.Printf("Invalid JSON input: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Invalid JSON input: %v\n", err)
+				if needsPrompt {
+					fmt.Print("> ")
+				}
 				continue
 			}
 		} else {
@@ -587,10 +622,10 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		if err == nil {
 			resp.Body.Close()
 		} else {
-			fmt.Printf("Send error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\rSend error: %v\n", err)
 		}
 
-		if mode == "text" || mode == "" || mode == "jsonr" {
+		if needsPrompt {
 			fmt.Print("> ")
 		}
 	}
