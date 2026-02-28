@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"embed"
 	"encoding/json"
@@ -514,12 +515,15 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 
 	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
 		fmt.Fprintf(os.Stderr, "\rReceived signal %v, exiting...\n", sig)
-		os.Exit(0)
+		cancel()
 	}()
 
 	sendMsg := func(text string, title string) {
@@ -552,17 +556,33 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		backoff := 1 * time.Second
 		var lastTimestamp time.Time
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
 			url := fmt.Sprintf("http://%s/service", address)
 			if !lastTimestamp.IsZero() {
 				url += "?timestamp=" + lastTimestamp.Format(time.RFC3339)
 			}
-			resp, err := http.Get(url)
+			req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				fmt.Fprintf(os.Stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
 				if needsPrompt {
 					fmt.Print("> ")
 				}
-				time.Sleep(backoff)
+
+				select {
+				case <-time.After(backoff):
+				case <-ctx.Done():
+					return
+				}
+
 				backoff *= 2
 				if backoff > 30*time.Second {
 					backoff = 30 * time.Second
@@ -576,6 +596,9 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 				var i Interaction
 				if err := dec.Decode(&i); err != nil {
 					resp.Body.Close()
+					if ctx.Err() != nil {
+						return
+					}
 					if err == io.EOF {
 						fmt.Fprintf(os.Stderr, "\rConnection closed by server. Reconnecting...\n")
 					} else {
@@ -611,14 +634,14 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 
 						// Forward messages from the web app (user) to tmux
 						// Send the message
-						cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, msg)
+						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {
 							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						// Small sleep before Enter
 						time.Sleep(100 * time.Millisecond)
 						// Send Enter
-						cmd = exec.Command("tmux", "send-keys", "-t", tmuxTarget, "Enter")
+						cmd = exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Enter")
 						if err := cmd.Run(); err != nil {
 							fmt.Fprintf(os.Stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
@@ -634,56 +657,87 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 					fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 				}
 			}
-			time.Sleep(1 * time.Second) // Small delay before reconnecting
+
+			select {
+			case <-time.After(1 * time.Second):
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
 	// Sender: POST to /service?stream=false
-	scanner := bufio.NewScanner(os.Stdin)
+	inputChan := make(chan string)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			inputChan <- scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintf(os.Stderr, "Stdin error: %v\n", err)
+		}
+		close(inputChan)
+	}()
+
 	if needsPrompt {
 		fmt.Print("> ")
 	}
-	for scanner.Scan() {
-		text := scanner.Text()
-		if text == "" {
-			if needsPrompt {
-				fmt.Print("> ")
-			}
-			continue
-		}
 
-		var i Interaction
-		if mode == "json" {
-			if err := json.Unmarshal([]byte(text), &i); err != nil {
-				fmt.Fprintf(os.Stderr, "Invalid JSON input: %v\n", err)
+loop:
+	for {
+		select {
+		case <-ctx.Done():
+			break loop
+		case text, ok := <-inputChan:
+			if !ok {
+				// Stdin closed (Ctrl-D)
+				if mode == "tmux" {
+					// Check if we are interactive
+					if stat, _ := os.Stdin.Stat(); (stat.Mode() & os.ModeCharDevice) == 0 {
+						// Not a terminal, block indefinitely to keep receiving
+						select {
+						case <-ctx.Done():
+							break loop
+						}
+					}
+				}
+				break loop
+			}
+
+			if text == "" {
 				if needsPrompt {
 					fmt.Print("> ")
 				}
 				continue
 			}
-		} else {
-			i = Interaction{Message: text}
+
+			var i Interaction
+			if mode == "json" {
+				if err := json.Unmarshal([]byte(text), &i); err != nil {
+					fmt.Fprintf(os.Stderr, "Invalid JSON input: %v\n", err)
+					if needsPrompt {
+						fmt.Print("> ")
+					}
+					continue
+				}
+			} else {
+				i = Interaction{Message: text}
+			}
+
+			data, _ := json.Marshal(i)
+			req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s/service?stream=false", address), bytes.NewReader(append(data, '\n')))
+			req.Header.Set("Content-Type", "application/x-ndjson")
+			resp, err := http.DefaultClient.Do(req)
+			if err == nil {
+				resp.Body.Close()
+			} else {
+				fmt.Fprintf(os.Stderr, "\rSend error: %v\n", err)
+			}
+
+			if needsPrompt {
+				fmt.Print("> ")
+			}
 		}
-
-		data, _ := json.Marshal(i)
-		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
-		if err == nil {
-			resp.Body.Close()
-		} else {
-			fmt.Fprintf(os.Stderr, "\rSend error: %v\n", err)
-		}
-
-		if needsPrompt {
-			fmt.Print("> ")
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		fmt.Fprintf(os.Stderr, "Stdin error: %v\n", err)
-	}
-
-	if mode == "tmux" {
-		select {} // Keep running as a receiver even if stdin is closed
 	}
 }
 
@@ -698,10 +752,12 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		if r.Method == http.MethodPost && r.URL.Query().Get("stream") == "false" {
 			dec := json.NewDecoder(r.Body)
 			var i Interaction
-			if err := dec.Decode(&i); err == nil {
-				i.IsUser = false
-				saveInteraction(db, &i)
+			if err := dec.Decode(&i); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
 			}
+			i.IsUser = false
+			saveInteraction(db, &i)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
