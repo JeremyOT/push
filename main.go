@@ -698,11 +698,12 @@ loop:
 			if !ok {
 				// Stdin closed (Ctrl-D)
 				if mode == "tmux" {
-					// Check if we are interactive
-					if stat, err := os.Stdin.Stat(); err == nil && (stat.Mode() & os.ModeCharDevice) == 0 {
-						// Not a terminal, block indefinitely to keep receiving
-						select {
-						case <-ctx.Done():
+					// Check if we are in a terminal
+					fi, err := os.Stdin.Stat()
+					if err == nil {
+						if (fi.Mode() & os.ModeCharDevice) == 0 {
+							// Input is piped, not a terminal. Block indefinitely to keep receiving.
+							<-ctx.Done()
 							break loop
 						}
 					}
