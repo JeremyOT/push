@@ -65,3 +65,5 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `README.md` with comprehensive usage instructions, flag lists, and feature documentation.
 - Improved `tmux` mode robustness by ensuring the process continues running as a receiver even if `stdin` is closed.
 - Enhanced CLI client error logging to provide more details when failing to notify the service.
+- Added signal handling to CLI client for graceful termination logging.
+- Added explicit `tmux` availability check and detailed error reporting for `tmux` command failures.

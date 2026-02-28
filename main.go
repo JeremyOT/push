@@ -17,9 +17,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -496,11 +498,24 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		mode = "tmux"
 	}
 
-	if mode == "tmux" && tmuxTarget == "" {
-		log.Fatal("tmux mode requires --tmux-target")
+	if mode == "tmux" {
+		if tmuxTarget == "" {
+			log.Fatal("tmux mode requires --tmux-target")
+		}
+		if _, err := exec.LookPath("tmux"); err != nil {
+			log.Fatalf("tmux mode requires tmux to be installed and in PATH: %v", err)
+		}
 	}
 
 	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		fmt.Fprintf(os.Stderr, "\rReceived signal %v, exiting...\n", sig)
+		os.Exit(0)
+	}()
 
 	sendMsg := func(text string, title string) {
 		i := Interaction{Message: text, Title: title}
@@ -588,14 +603,14 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 						// Send the message
 						cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {
-							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v\n", err)
+							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						// Small sleep before Enter
 						time.Sleep(100 * time.Millisecond)
 						// Send Enter
 						cmd = exec.Command("tmux", "send-keys", "-t", tmuxTarget, "Enter")
 						if err := cmd.Run(); err != nil {
-							fmt.Fprintf(os.Stderr, "\rFailed to send Enter to tmux: %v\n", err)
+							fmt.Fprintf(os.Stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						if needsPrompt {
 							fmt.Print("> ")
@@ -651,6 +666,10 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		if needsPrompt {
 			fmt.Print("> ")
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "Stdin error: %v\n", err)
 	}
 
 	if mode == "tmux" {
