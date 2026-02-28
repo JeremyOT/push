@@ -520,7 +520,8 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 	sendMsg := func(text string, title string) {
 		i := Interaction{Message: text, Title: title}
 		data, _ := json.Marshal(i)
-		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
 		if err == nil {
 			resp.Body.Close()
 		} else {
@@ -534,11 +535,15 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 			msg += fmt.Sprintf(" (Client ID: %s)", clientID)
 		}
 		sendMsg(msg, "tmux-service")
-		defer sendMsg("No longer forwarding responses", "tmux-service")
+		defer func() {
+			sendMsg("No longer forwarding responses", "tmux-service")
+			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
+		}()
 	}
 
 	// Receiver: Stream from GET /service
 	go func() {
+		time.Sleep(100 * time.Millisecond) // Give the sender a head start
 		backoff := 1 * time.Second
 		var lastTimestamp time.Time
 		for {
