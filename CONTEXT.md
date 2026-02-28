@@ -63,3 +63,5 @@ go build -ldflags="-w -s" -o push main.go
 - Redirected all `--cli-service` connection logs and errors to `stderr` for better piping support.
 - Added `tmux:client_id` format to `--cli-service` to filter and strip prefixes from user messages.
 - Updated `README.md` with comprehensive usage instructions, flag lists, and feature documentation.
+- Improved `tmux` mode robustness by ensuring the process continues running as a receiver even if `stdin` is closed.
+- Enhanced CLI client error logging to provide more details when failing to notify the service.

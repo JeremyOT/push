@@ -508,6 +508,8 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		resp, err := http.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
 		if err == nil {
 			resp.Body.Close()
+		} else {
+			fmt.Fprintf(os.Stderr, "\rFailed to notify service: %v\n", err)
 		}
 	}
 
@@ -649,6 +651,10 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		if needsPrompt {
 			fmt.Print("> ")
 		}
+	}
+
+	if mode == "tmux" {
+		select {} // Keep running as a receiver even if stdin is closed
 	}
 }
 
