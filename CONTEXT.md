@@ -23,7 +23,7 @@ The application has been updated to support a client mode for sending messages d
     - `text`: Standard text input/formatted output.
     - `json`: NDJSON input and output.
     - `jsonr`: Text input and NDJSON output.
-    - `tmux`: Forwards user messages to a specified tmux pane.
+    - `tmux`: Forwards user messages to a specified tmux pane. Can optionally specify a client ID using `tmux:client_id` to only process messages prefixed with `client_id ` or `client_id: `.
 - `-tmux-target`: Target tmux pane for `tmux` mode (e.g., session:window.pane).
 
 ## API Endpoints
@@ -61,3 +61,4 @@ go build -ldflags="-w -s" -o push main.go
 - Added reconnection logic with exponential backoff for `--cli-service` to handle connection losses gracefully.
 - Improved `--cli-service` reliability by tracking message timestamps to avoid data loss during reconnection.
 - Redirected all `--cli-service` connection logs and errors to `stderr` for better piping support.
+- Added `tmux:client_id` format to `--cli-service` to filter and strip prefixes from user messages.

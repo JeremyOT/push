@@ -490,6 +490,12 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 }
 
 func runCliClient(address string, mode string, tmuxTarget string) {
+	var clientID string
+	if strings.HasPrefix(mode, "tmux:") {
+		clientID = strings.TrimPrefix(mode, "tmux:")
+		mode = "tmux"
+	}
+
 	if mode == "tmux" && tmuxTarget == "" {
 		log.Fatal("tmux mode requires --tmux-target")
 	}
@@ -506,7 +512,11 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 	}
 
 	if mode == "tmux" {
-		sendMsg(fmt.Sprintf("Now forwarding responses to %s", tmuxTarget), "tmux-service")
+		msg := fmt.Sprintf("Now forwarding responses to %s", tmuxTarget)
+		if clientID != "" {
+			msg += fmt.Sprintf(" (Client ID: %s)", clientID)
+		}
+		sendMsg(msg, "tmux-service")
 		defer sendMsg("No longer forwarding responses", "tmux-service")
 	}
 
@@ -561,9 +571,20 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 					fmt.Printf("%s\n", string(data))
 				} else if mode == "tmux" {
 					if i.IsUser {
+						msg := i.Message
+						if clientID != "" {
+							if strings.HasPrefix(msg, clientID+": ") {
+								msg = strings.TrimPrefix(msg, clientID+": ")
+							} else if strings.HasPrefix(msg, clientID+" ") {
+								msg = strings.TrimPrefix(msg, clientID+" ")
+							} else {
+								continue // Ignore messages not matching clientID
+							}
+						}
+
 						// Forward messages from the web app (user) to tmux
 						// Send the message
-						cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, i.Message)
+						cmd := exec.Command("tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {
 							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v\n", err)
 						}
