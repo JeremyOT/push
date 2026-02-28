@@ -333,28 +333,33 @@ func resizeImage(src image.Image, size int) ([]byte, error) {
 }
 
 func initDB(db *sql.DB) error {
-	query := `
-	CREATE TABLE IF NOT EXISTS interactions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT DEFAULT '',
-		message TEXT NOT NULL,
-		detailed_message TEXT DEFAULT '',
-		link TEXT DEFAULT '',
-		is_user BOOLEAN DEFAULT 0,
-		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-	);
-	CREATE TABLE IF NOT EXISTS subscriptions (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		endpoint TEXT NOT NULL UNIQUE,
-		p256dh TEXT NOT NULL,
-		auth TEXT NOT NULL
-	);
-	CREATE TABLE IF NOT EXISTS config (
-		key TEXT PRIMARY KEY,
-		value TEXT NOT NULL
-	);
-	`
-	_, err := db.Exec(query)
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS interactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT DEFAULT '',
+			message TEXT NOT NULL,
+			detailed_message TEXT DEFAULT '',
+			link TEXT DEFAULT '',
+			is_user BOOLEAN DEFAULT 0,
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS subscriptions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			endpoint TEXT NOT NULL UNIQUE,
+			p256dh TEXT NOT NULL,
+			auth TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS config (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
+	}
+
+	for _, q := range queries {
+		if _, err := db.Exec(q); err != nil {
+			return err
+		}
+	}
 
 	// Add columns if they don't exist (migration)
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN title TEXT DEFAULT ''")
@@ -362,7 +367,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN is_user BOOLEAN DEFAULT 0")
 
-	return err
+	return nil
 }
 
 func initVAPID(db *sql.DB) error {

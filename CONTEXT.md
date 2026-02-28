@@ -69,3 +69,4 @@ go build -ldflags="-w -s" -o push main.go
 - Added explicit `tmux` availability check and detailed error reporting for `tmux` command failures.
 - Added 5s timeout to initial CLI client notification and 100ms delay for graceful exit messages.
 - Added small delay to receiver goroutine startup for improved synchronization with sender.
+- Improved `initDB` by executing SQL statements separately for better driver compatibility.
