@@ -62,3 +62,4 @@ go build -ldflags="-w -s" -o push main.go
 - Improved `--cli-service` reliability by tracking message timestamps to avoid data loss during reconnection.
 - Redirected all `--cli-service` connection logs and errors to `stderr` for better piping support.
 - Added `tmux:client_id` format to `--cli-service` to filter and strip prefixes from user messages.
+- Updated `README.md` with comprehensive usage instructions, flag lists, and feature documentation.
