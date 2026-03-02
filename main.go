@@ -101,28 +101,21 @@ func main() {
 	flag.Parse()
 
 	if *cliService != "" {
-		runCliClient(*address, *cliService, *tmuxTarget)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		go func() {
+			<-sigChan
+			cancel()
+		}()
+		runCliClient(ctx, *address, *cliService, *tmuxTarget, os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 
 	if *message != "" {
-		url := fmt.Sprintf("http://%s/interactions", *address)
-		payload := map[string]string{
-			"message": *message,
-			"title":   *title,
-		}
-		jsonPayload, err := json.Marshal(payload)
-		if err != nil {
-			log.Fatalf("Failed to marshal payload: %v", err)
-		}
-		resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
-		if err != nil {
-			log.Fatalf("Failed to send request: %v", err)
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			log.Fatalf("Server returned error: %s - %s", resp.Status, string(body))
+		if err := sendMessage(*address, *message, *title); err != nil {
+			log.Fatalf("Failed to send message: %v", err)
 		}
 		fmt.Println("Message sent successfully.")
 		return
@@ -497,7 +490,29 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	return nil
 }
 
-func runCliClient(address string, mode string, tmuxTarget string) {
+func sendMessage(address, message, title string) error {
+	url := fmt.Sprintf("http://%s/interactions", address)
+	payload := map[string]string{
+		"message": message,
+		"title":   title,
+	}
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned error: %s - %s", resp.Status, string(body))
+	}
+	return nil
+}
+
+func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
 		clientID = strings.TrimPrefix(mode, "tmux:")
@@ -506,25 +521,16 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 
 	if mode == "tmux" {
 		if tmuxTarget == "" {
-			log.Fatal("tmux mode requires --tmux-target")
+			fmt.Fprintln(stderr, "tmux mode requires --tmux-target")
+			return
 		}
 		if _, err := exec.LookPath("tmux"); err != nil {
-			log.Fatalf("tmux mode requires tmux to be installed and in PATH: %v", err)
+			fmt.Fprintf(stderr, "tmux mode requires tmux to be installed and in PATH: %v\n", err)
+			return
 		}
 	}
 
 	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigChan
-		fmt.Fprintf(os.Stderr, "\rReceived signal %v, exiting...\n", sig)
-		cancel()
-	}()
 
 	sendMsg := func(text string, title string) {
 		i := Interaction{Message: text, Title: title}
@@ -534,7 +540,7 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 		if err == nil {
 			resp.Body.Close()
 		} else {
-			fmt.Fprintf(os.Stderr, "\rFailed to notify service: %v\n", err)
+			fmt.Fprintf(stderr, "\rFailed to notify service: %v\n", err)
 		}
 	}
 
@@ -576,9 +582,9 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 				if ctx.Err() != nil {
 					return
 				}
-				fmt.Fprintf(os.Stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
+				fmt.Fprintf(stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
 				if needsPrompt {
-					fmt.Print("> ")
+					fmt.Fprint(stdout, "> ")
 				}
 
 				select {
@@ -604,12 +610,12 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 						return
 					}
 					if err == io.EOF {
-						fmt.Fprintf(os.Stderr, "\rConnection closed by server. Reconnecting...\n")
+						fmt.Fprintf(stderr, "\rConnection closed by server. Reconnecting...\n")
 					} else {
-						fmt.Fprintf(os.Stderr, "\rStream error: %v. Reconnecting...\n", err)
+						fmt.Fprintf(stderr, "\rStream error: %v. Reconnecting...\n", err)
 					}
 					if needsPrompt {
-						fmt.Print("> ")
+						fmt.Fprint(stdout, "> ")
 					}
 					break
 				}
@@ -622,7 +628,7 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 
 				if mode == "json" || mode == "jsonr" {
 					data, _ := json.Marshal(i)
-					fmt.Printf("%s\n", string(data))
+					fmt.Fprintf(stdout, "%s\n", string(data))
 				} else if mode == "tmux" {
 					if i.IsUser {
 						msg := i.Message
@@ -642,17 +648,17 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 						// Send the message
 						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {
-							fmt.Fprintf(os.Stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
+							fmt.Fprintf(stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						// Small sleep before Enter
 						time.Sleep(100 * time.Millisecond)
 						// Send Enter
 						cmd = exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Enter")
 						if err := cmd.Run(); err != nil {
-							fmt.Fprintf(os.Stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
+							fmt.Fprintf(stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						if needsPrompt {
-							fmt.Print("> ")
+							fmt.Fprint(stdout, "> ")
 						}
 					}
 				} else {
@@ -660,7 +666,7 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 					if author == "" {
 						author = "User"
 					}
-					fmt.Printf("\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
+					fmt.Fprintf(stdout, "\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
 				}
 			}
 
@@ -675,18 +681,18 @@ func runCliClient(address string, mode string, tmuxTarget string) {
 	// Sender: POST to /service?stream=false
 	inputChan := make(chan string)
 	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
+		scanner := bufio.NewScanner(stdin)
 		for scanner.Scan() {
 			inputChan <- scanner.Text()
 		}
 		if err := scanner.Err(); err != nil {
-			fmt.Fprintf(os.Stderr, "Stdin error: %v\n", err)
+			fmt.Fprintf(stderr, "Stdin error: %v\n", err)
 		}
 		close(inputChan)
 	}()
 
 	if needsPrompt {
-		fmt.Print("> ")
+		fmt.Fprint(stdout, "> ")
 	}
 
 loop:
@@ -699,12 +705,13 @@ loop:
 				// Stdin closed (Ctrl-D)
 				if mode == "tmux" {
 					// Check if we are in a terminal
-					fi, err := os.Stdin.Stat()
-					if err == nil {
-						if (fi.Mode() & os.ModeCharDevice) == 0 {
-							// Input is piped, not a terminal. Block indefinitely to keep receiving.
-							<-ctx.Done()
-							break loop
+					if fi, ok := stdin.(interface{ Stat() (os.FileInfo, error) }); ok {
+						if stat, err := fi.Stat(); err == nil {
+							if (stat.Mode() & os.ModeCharDevice) == 0 {
+								// Input is piped, not a terminal. Block indefinitely to keep receiving.
+								<-ctx.Done()
+								break loop
+							}
 						}
 					}
 				}
@@ -713,7 +720,7 @@ loop:
 
 			if text == "" {
 				if needsPrompt {
-					fmt.Print("> ")
+					fmt.Fprint(stdout, "> ")
 				}
 				continue
 			}
@@ -721,9 +728,9 @@ loop:
 			var i Interaction
 			if mode == "json" {
 				if err := json.Unmarshal([]byte(text), &i); err != nil {
-					fmt.Fprintf(os.Stderr, "Invalid JSON input: %v\n", err)
+					fmt.Fprintf(stderr, "Invalid JSON input: %v\n", err)
 					if needsPrompt {
-						fmt.Print("> ")
+						fmt.Fprint(stdout, "> ")
 					}
 					continue
 				}
@@ -738,11 +745,11 @@ loop:
 			if err == nil {
 				resp.Body.Close()
 			} else {
-				fmt.Fprintf(os.Stderr, "\rSend error: %v\n", err)
+				fmt.Fprintf(stderr, "\rSend error: %v\n", err)
 			}
 
 			if needsPrompt {
-				fmt.Print("> ")
+				fmt.Fprint(stdout, "> ")
 			}
 		}
 	}

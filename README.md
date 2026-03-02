@@ -103,3 +103,19 @@ Implementation
 --------------
 
 The implementation is a single binary written in Go with embedded html/javascript/css using Golang's embed package. Interactions are stored in a local sqlite database.
+
+Testing
+-------
+
+To run the unit tests, use the following Go command:
+
+```bash
+go test -v .
+```
+
+To see the test coverage report:
+
+```bash
+go test -coverprofile=coverage.out .
+go tool cover -func=coverage.out
+```

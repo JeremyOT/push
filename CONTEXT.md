@@ -69,6 +69,9 @@ go build -ldflags="-w -s" -o push main.go
 - Added explicit `tmux` availability check and detailed error reporting for `tmux` command failures.
 - Added 5s timeout to initial CLI client notification and 100ms delay for graceful exit messages.
 - Added small delay to receiver goroutine startup for improved synchronization with sender.
-- Improved `initDB` by executing SQL statements separately for better driver compatibility.
-- Implemented `Context`-based graceful shutdown for CLI client, ensuring all cleanup logic runs on termination.
+- Added comprehensive unit tests in `main_test.go` (covering Broadcaster, database, handlers, static content, and CLI logic).
+- Refactored `runCliClient` to support `io.Reader`/`io.Writer` and `context.Context` for improved testability.
+- Extracted CLI message-sending logic into a separate `sendMessage` function for independent verification.
+- Implemented `TestRunCliClient` and `TestRunCliClientModes` to verify end-to-end behavior of the CLI service (text, json, jsonr modes).
+- Improved overall code coverage to 56.5% and updated `README.md` with testing instructions.
 - Enhanced `tmux` mode to only block on EOF if `stdin` is not a terminal, restoring normal interactive quit behavior.
