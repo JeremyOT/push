@@ -12,8 +12,8 @@ def main():
             return
             
         # Log input for debugging (matching original script behavior)
-        with open(os.path.expanduser("~/aa.json"), "w") as f:
-            f.write(raw_input)
+        # with open(os.path.expanduser("~/aa.json"), "w") as f:
+        #    f.write(raw_input)
             
         data = json.loads(raw_input)
     except Exception:
