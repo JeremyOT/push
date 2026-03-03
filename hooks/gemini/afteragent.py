@@ -31,7 +31,8 @@ def main():
             "message": message[:50],
             "title": title,
             "link": "",
-            "detailed_message": message
+            "detailed_message": message,
+            "quiet": True
         }
         
         url = "http://127.0.0.1:8089/interactions"

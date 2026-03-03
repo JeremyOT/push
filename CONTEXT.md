@@ -74,6 +74,7 @@ go build -ldflags="-w -s" -o push main.go
 - Extracted CLI message-sending logic into a separate `sendMessage` function for independent verification.
 - Implemented `TestRunCliClient` and `TestRunCliClientModes` to verify end-to-end behavior of the CLI service (text, json, jsonr modes).
 - Improved overall code coverage to 56.5% and updated `README.md` with testing instructions.
+- Updated `hooks/gemini/afteragent.py` to send "quiet" notifications, suppressing push alerts for automated agent status updates.
 - Added "quiet" mode for interactions: when `quiet: true`, messages are broadcast to clients but skip push notifications.
 - Updated database schema and migrations to include the `quiet` column in the `interactions` table.
 - Enhanced `handleInteractions` and `handleService` to support the `quiet` field in both GET and POST requests.
