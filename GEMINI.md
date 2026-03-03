@@ -1,3 +1,3 @@
-read CONTEXT.md at the start of every session to understand what we've done
-
-After each change, update CONTEXT.md with what happened, and commit
+- Read CONTEXT.md at the start of every session to understand what we've done
+- Ensure unit test coverage is included with each change
+- After each change, update CONTEXT.md with what happened, and commit
