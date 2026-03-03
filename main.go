@@ -40,6 +40,7 @@ type Interaction struct {
 	DetailedMessage string    `json:"detailed_message"`
 	Link            string    `json:"link"`
 	IsUser          bool      `json:"is_user"`
+	Quiet           bool      `json:"quiet"`
 	Timestamp       time.Time `json:"timestamp"`
 }
 
@@ -335,6 +336,7 @@ func initDB(db *sql.DB) error {
 			detailed_message TEXT DEFAULT '',
 			link TEXT DEFAULT '',
 			is_user BOOLEAN DEFAULT 0,
+			quiet BOOLEAN DEFAULT 0,
 			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS subscriptions (
@@ -360,6 +362,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN link TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN is_user BOOLEAN DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN quiet BOOLEAN DEFAULT 0")
 
 	return nil
 }
@@ -410,15 +413,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -430,7 +433,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Timestamp); err != nil {
+				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -473,7 +476,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 }
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
-	res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user) VALUES (?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser)
+	res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
 	if err != nil {
 		return err
 	}
@@ -481,8 +484,8 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	i.ID = id
 	i.Timestamp = time.Now().UTC()
 
-	// Trigger Push for non-user messages only
-	if !i.IsUser {
+	// Trigger Push for non-user messages only, and only if not quiet
+	if !i.IsUser && !i.Quiet {
 		go sendPushNotifications(db, i.Title, i.Message, i.Link)
 	}
 	// Broadcast for streaming to all clients
@@ -808,12 +811,12 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		defer broadcaster.Unsubscribe(ch)
 
 		sentIds := make(map[int64]bool)
-		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
+		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Timestamp); err == nil {
+				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err == nil {
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()

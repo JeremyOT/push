@@ -255,6 +255,27 @@ func TestHandleInteractions(t *testing.T) {
 		t.Error("Expected non-zero ID")
 	}
 
+	// Test POST with Quiet
+	interactionQuiet := Interaction{
+		Title:   "Quiet POST",
+		Message: "Shhh",
+		Quiet:   true,
+	}
+	bodyQuiet, _ := json.Marshal(interactionQuiet)
+	reqQuiet := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyQuiet))
+	wQuiet := httptest.NewRecorder()
+	handler(wQuiet, reqQuiet)
+
+	if wQuiet.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", wQuiet.Code)
+	}
+
+	var savedQuiet Interaction
+	json.NewDecoder(wQuiet.Body).Decode(&savedQuiet)
+	if !savedQuiet.Quiet {
+		t.Error("Expected quiet to be true in response")
+	}
+
 	// Test GET
 	req = httptest.NewRequest("GET", "/interactions", nil)
 	w = httptest.NewRecorder()
@@ -268,8 +289,11 @@ func TestHandleInteractions(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if len(list) != 1 {
-		t.Errorf("Expected 1 interaction, got %d", len(list))
+	if len(list) != 2 {
+		t.Errorf("Expected 2 interactions, got %d", len(list))
+	}
+	if !list[1].Quiet {
+		t.Error("Expected second interaction to have quiet=true")
 	}
 }
 
