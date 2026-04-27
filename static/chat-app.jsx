@@ -11,7 +11,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [decisions, setDecisions] = React.useState({});
   const [messages, setMessages] = React.useState([]);
   const [typing, setTyping] = React.useState(null);
-  const [initialLoadComplete, setInitialLoadComplete] = React.useState(false);
   const isPhone = mode === 'phone';
 
   const thread = THREADS.find((t) => t.id === activeId) || THREADS[0];
@@ -41,7 +40,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     let agentId = 'remote';
-    let displayTitle = msg.title || '';
     
     // Parse agent from title prefix if present (e.g. "Gemini - Done")
     if (msg.title) {
@@ -99,41 +97,84 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     };
   };
 
-  const fetchMessages = async (type = 'initial') => {
-    let url = '/interactions';
-    if (type === 'poll') {
-      if (!initialLoadComplete) return;
-      url += `?after=${newestId.current}`;
-    }
-
+  const fetchInitial = async () => {
     try {
-      const response = await fetch(url);
+      const response = await fetch('/interactions');
       if (!response.ok) throw new Error('Failed to fetch');
       const data = await response.json();
-
-      if (data.length === 0) {
-          if (type === 'initial') setInitialLoadComplete(true);
-          return;
-      }
-
-      const mapped = data.map(mapMessage);
-      
-      if (type === 'initial') {
+      if (data.length > 0) {
+        const mapped = data.map(mapMessage);
         setMessages(mapped);
-        newestId.current = data[data.length - 1].id;
-        setInitialLoadComplete(true);
-      } else {
-        setMessages(prev => [...prev, ...mapped]);
         newestId.current = data[data.length - 1].id;
       }
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error('Error fetching initial messages:', error);
     }
   };
 
+  const startStreaming = () => {
+    let reconnectTimeout = null;
+    
+    const connect = async () => {
+      try {
+        const response = await fetch(`/service?timestamp=${Date.now()}`);
+        if (!response.ok) throw new Error('Stream failed');
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.id > newestId.current) {
+                const mapped = mapMessage(msg);
+                setMessages(prev => [...prev, mapped]);
+                newestId.current = msg.id;
+              }
+            } catch (e) {
+              console.error('Error parsing stream line:', e);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Stream error, reconnecting in 3s...', error);
+        reconnectTimeout = setTimeout(connect, 3000);
+      }
+    };
+
+    connect();
+    return () => clearTimeout(reconnectTimeout);
+  };
+
   React.useEffect(() => {
-    fetchMessages('initial');
-    const interval = setInterval(() => fetchMessages('poll'), 3000);
+    fetchInitial().then(startStreaming);
+    // fallback polling just in case stream dies or is not supported
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`/interactions?after=${newestId.current}`);
+            const data = await response.json();
+            if (data.length > 0) {
+                const mapped = data.map(mapMessage);
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m.id));
+                    const newOnes = mapped.filter(m => !existingIds.has(m.id));
+                    if (newOnes.length === 0) return prev;
+                    return [...prev, ...newOnes];
+                });
+                newestId.current = data[data.length - 1].id;
+            }
+        } catch (e) {}
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -167,8 +208,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         });
         if (!response.ok) throw new Error('Failed to send');
         
-        // Let the polling pick it up, or fetch immediately
-        fetchMessages('poll');
+        // Polling or stream will pick it up
     } catch (error) {
         console.error('Error sending message:', error);
     }
