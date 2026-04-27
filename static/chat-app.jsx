@@ -45,7 +45,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return {
         id: msg.id,
         kind: 'approval',
-        agent: 'gemini',
+        agent: 'remote',
         time: formatTime(msg.timestamp),
         title: msg.title,
         summary: msg.message,
@@ -58,7 +58,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return {
         id: msg.id,
         kind: 'tool',
-        agent: 'gemini',
+        agent: 'remote',
         time: formatTime(msg.timestamp),
         tool: 'shell',
         title: msg.title,
@@ -70,7 +70,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return {
       id: msg.id,
       kind: 'agent',
-      agent: 'gemini',
+      agent: 'remote',
       status: 'done',
       time: formatTime(msg.timestamp),
       text: msg.detailed_message || msg.message,

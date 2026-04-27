@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Push</title>
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="/manifest.json">
@@ -11,9 +11,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; padding: 0; background: #0b0d10; height: 100%; overflow: hidden; }
+  html, body { margin: 0; padding: 0; background: #0b0d10; height: 100%; width: 100%; overflow: hidden; position: fixed; }
   body { font-family: "Inter", -apple-system, system-ui, sans-serif; color: #e7eaee; -webkit-font-smoothing: antialiased; }
-  #root { height: 100%; }
+  #root { height: 100%; width: 100%; display: flex; align-items: center; justify-content: center; }
   * { box-sizing: border-box; }
   @keyframes pushDot {
     0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
@@ -46,6 +46,7 @@
 <script type="text/babel" src="chat-rail.jsx"></script>
 <script type="text/babel" src="chat-messages.jsx"></script>
 <script type="text/babel" src="chat-composer.jsx"></script>
+<script type="text/babel" src="ios-frame.jsx"></script>
 <script type="text/babel" src="chat-app.jsx"></script>
 
 <script type="text/babel" data-presets="env,react">
@@ -53,19 +54,44 @@ const config = JSON.parse(document.getElementById('config').textContent);
 
 function App() {
   const [dark, setDark] = React.useState(true);
+  const [mode, setMode] = React.useState(window.innerWidth < 768 ? 'phone' : 'tablet');
   const theme = THEMES[dark ? 'dark' : 'light'];
   
+  React.useEffect(() => {
+    const handleResize = () => {
+      setMode(window.innerWidth < 768 ? 'phone' : 'tablet');
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const icon = React.useMemo(() => ({
     ...APP_ICON, src: 'icon.png', bg: '#000000',
   }), []);
 
-  // Use a simplified version of PushChat or modify chat-app.jsx
+  if (mode === 'phone') {
+    return (
+      <IOSDevice width="100%" height="100%" dark={dark}>
+        <div style={{ height: '100%', paddingTop: 44 }}>
+          <PushChat 
+            theme={theme} 
+            dark={dark} 
+            setDark={setDark} 
+            mode="phone" 
+            icon={icon}
+            config={config}
+          />
+        </div>
+      </IOSDevice>
+    );
+  }
+
   return (
     <PushChat 
       theme={theme} 
       dark={dark} 
       setDark={setDark} 
-      mode={window.innerWidth < 768 ? 'phone' : 'tablet'} 
+      mode="tablet" 
       icon={icon}
       config={config}
     />

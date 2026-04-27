@@ -84,3 +84,5 @@ go build -ldflags="-w -s" -o push main.go
 - Integrated the new design with the existing Go backend, supporting real-time polling and interactive message sending.
 - Added support for titles and links in the new message bubbles.
 - Maintained compatibility with `-application-title`, `-icon`, and `-interactive` flags by adapting the new design to the backend's injection patterns.
+- Renamed the default message sender from "Gemini" to "Remote" with a neutral color scheme and updated all message mapping logic.
+- Fixed iPhone layout issues by integrating the `IOSDevice` frame into the web interface, ensuring proper padding for the status bar and dynamic island on mobile devices.

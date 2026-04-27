@@ -2,13 +2,13 @@
 // Agents, threads, messages with status indicators, tool outputs, approvals.
 
 const AGENTS = {
-  gemini: {
-    id: 'gemini',
-    name: 'Gemini',
-    short: 'GM',
-    model: '2.5-pro',
-    color: '#4f8ef7',
-    colorSoft: 'rgba(79,142,247,0.16)',
+  remote: {
+    id: 'remote',
+    name: 'Remote',
+    short: 'RM',
+    model: 'push-service',
+    color: '#9aa3ad',
+    colorSoft: 'rgba(154,163,173,0.16)',
   },
 };
 
@@ -24,7 +24,7 @@ const STATUS = {
 const THREADS = [
   {
     id: 't1',
-    agent: 'gemini',
+    agent: 'remote',
     title: 'Main Feed',
     status: 'done',
     snippet: 'Push notification system active.',
