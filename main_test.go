@@ -272,21 +272,39 @@ func TestHandleInteractions(t *testing.T) {
 		t.Errorf("Unexpected saved interaction: %+v", savedID)
 	}
 
-	// Test POST with same Identifier (Update)
-	interactionUpdate := Interaction{
+	// Test POST with same Identifier (Default: Append)
+	interactionAppend := Interaction{
+		Identifier: "task-1",
+		Title:      "Task 1",
+		Message:    " (nearly done)",
+	}
+	bodyAppend, _ := json.Marshal(interactionAppend)
+	reqAppend := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyAppend))
+	wAppend := httptest.NewRecorder()
+	handler(wAppend, reqAppend)
+
+	var savedAppend Interaction
+	json.Unmarshal(wAppend.Body.Bytes(), &savedAppend)
+	if savedAppend.Message != "Started (nearly done)" || !savedAppend.Update {
+		t.Errorf("Expected append, got: '%s' (update=%v)", savedAppend.Message, savedAppend.Update)
+	}
+
+	// Test POST with same Identifier (Explicit: Replace)
+	interactionReplace := Interaction{
 		Identifier: "task-1",
 		Title:      "Task 1",
 		Message:    "Completed",
+		Replace:    true,
 	}
-	bodyUpdate, _ := json.Marshal(interactionUpdate)
-	reqUpdate := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyUpdate))
-	wUpdate := httptest.NewRecorder()
-	handler(wUpdate, reqUpdate)
+	bodyReplace, _ := json.Marshal(interactionReplace)
+	reqReplace := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyReplace))
+	wReplace := httptest.NewRecorder()
+	handler(wReplace, reqReplace)
 
-	var savedUpdate Interaction
-	json.Unmarshal(wUpdate.Body.Bytes(), &savedUpdate)
-	if savedUpdate.ID != savedID.ID || savedUpdate.Message != "Completed" || !savedUpdate.Update {
-		t.Errorf("Expected update of same ID, got: %+v", savedUpdate)
+	var savedReplace Interaction
+	json.Unmarshal(wReplace.Body.Bytes(), &savedReplace)
+	if savedReplace.ID != savedID.ID || savedReplace.Message != "Completed" || !savedReplace.Update {
+		t.Errorf("Expected replace, got: %+v", savedReplace)
 	}
 
 	// Verify in GET

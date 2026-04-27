@@ -80,6 +80,7 @@ def main():
         
         payload = {
             "identifier": identifier,
+            "replace": True,
             "message": message[:50],
             "title": title,
             "link": "",

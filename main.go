@@ -44,6 +44,7 @@ type Interaction struct {
 	Quiet           bool      `json:"quiet"`
 	Timestamp       time.Time `json:"timestamp"`
 	Update          bool      `json:"update,omitempty"`
+	Replace         bool      `json:"replace,omitempty"`
 }
 
 var vapidPrivateKey string
@@ -484,9 +485,15 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		// Check if it already exists
 		var id int64
 		var timestamp time.Time
-		err := db.QueryRow("SELECT id, timestamp FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp)
+		var existingMessage string
+		var existingDetailedMessage string
+		err := db.QueryRow("SELECT id, timestamp, message, detailed_message FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingMessage, &existingDetailedMessage)
 		if err == nil {
 			// Exists, update it
+			if !i.Replace {
+				i.Message = existingMessage + i.Message
+				i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
+			}
 			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, id)
 			if err != nil {
 				return err
