@@ -89,6 +89,6 @@ go build -ldflags="-w -s" -o push main.go
 - Enabled dynamic app icon updating in the web interface by using `icon.svg` as the source, allowing the backend to replace it with a custom icon when the `--icon` flag is used.
 - Added dynamic agent detection in the web interface; messages with titles formatted as "AgentName - Status" (e.g., "Gemini - Done" or "Claude - permission_prompt") are now correctly attributed to that agent with its corresponding design-specified colors and icons, defaulting to "Remote".
 - Implementation of dynamic in-place message updates via an optional user-supplied `identifier`, with full support in the Go backend and React frontend.
-- Updated `hooks/gemini/aftermodel.py` to supply a stable message identifier derived from the hash of the `llm_request` field, enabling in-place updates of model responses as they are generated.
+- Updated `hooks/gemini/aftermodel.py` to supply a stable message identifier derived from the hash of the `llm_request` field (filtered to only include contents up until the most recent "user" message), enabling in-place updates of model responses during a single turn.
 - Refined agent status display in the web interface and hooks to show the "Done" status when appropriate.
 - Fixed a regression where user messages were not appearing in the feed by correcting the `mapMessage` logic and refining state update conditions to properly handle both new messages and in-place updates.

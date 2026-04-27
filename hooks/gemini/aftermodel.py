@@ -16,6 +16,7 @@ def main():
     except Exception:
         return
 
+
     try:
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
@@ -27,7 +28,20 @@ def main():
         # Generate stable identifier from request
         identifier = ""
         if llm_request:
-            req_str = json.dumps(llm_request, sort_keys=True)
+            # We want to hash the request up until the last user message.
+            # This ensures that multiple model updates for the same user turn
+            # result in the same identifier.
+            filtered_request = llm_request.copy()
+            contents = filtered_request.get("contents", [])
+            last_user_idx = -1
+            for i, msg in enumerate(contents):
+                if msg.get("role") == "user":
+                    last_user_idx = i
+            
+            if last_user_idx != -1:
+                filtered_request["contents"] = contents[:last_user_idx + 1]
+            
+            req_str = json.dumps(filtered_request, sort_keys=True)
             identifier = f"gemini-req-{hashlib.sha256(req_str.encode()).hexdigest()[:16]}"
 
         # Logic to get the current model message
@@ -38,7 +52,7 @@ def main():
             candidate_content = candidates[0].get("content", {})
             parts = candidate_content.get("parts", [])
             if parts:
-                message_content = "".join([p.get("text", "") for p in parts])
+                message_content = "".join([p if isinstance(p, str) else p.get("text", "") for p in parts])
             
         # Finish reason
         finish_reason = "null"
@@ -70,7 +84,7 @@ def main():
             "title": title,
             "link": "",
             "detailed_message": detailed_message,
-            "quiet": True
+            "quiet": notification_type == "Working"
         }
         
         url = "http://127.0.0.1:8089/interactions"
