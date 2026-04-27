@@ -597,7 +597,7 @@ func TestExportStatic(t *testing.T) {
 	}
 
 	// Verify files exist
-	files := []string{"index.html", "manifest.json", "sw.js", "style.css", "app.js"}
+	files := []string{"index.html", "manifest.json", "sw.js", "chat-app.jsx", "chat-messages.jsx"}
 	for _, f := range files {
 		if _, err := os.Stat(filepath.Join(tempDir, f)); err != nil {
 			t.Errorf("File %s was not exported", f)
