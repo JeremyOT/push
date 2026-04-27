@@ -3,6 +3,7 @@ import sys
 import json
 import urllib.request
 import os
+import hashlib
 
 def main():
     try:
@@ -10,10 +11,6 @@ def main():
         raw_input = sys.stdin.read()
         if not raw_input.strip():
             return
-
-        # Log input for debugging
-        with open(os.path.expanduser("~/am.json"), "w") as f:
-            f.write(raw_input)
 
         data = json.loads(raw_input)
     except Exception:
@@ -23,8 +20,15 @@ def main():
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
         
+        llm_request = data.get("llm_request")
         llm_response = data.get("llm_response", {})
         short_response = llm_response.get("text") or 'null'
+
+        # Generate stable identifier from request
+        identifier = ""
+        if llm_request:
+            req_str = json.dumps(llm_request, sort_keys=True)
+            identifier = f"gemini-req-{hashlib.sha256(req_str.encode()).hexdigest()[:16]}"
 
         # Logic to get the current model message
         message_content = short_response
@@ -37,25 +41,36 @@ def main():
                 message_content = "".join([p.get("text", "") for p in parts])
             
         # Finish reason
-        # .llm_response.candidates[0].finishReason
         finish_reason = "null"
         if candidates:
             finish_reason = candidates[0].get("finishReason", "null")
 
         # Check exit conditions
-        if not finish_reason or finish_reason == "null" or short_response == "null":
+        if not finish_reason or short_response == "null":
             return
 
-        notification_type = "Done"
+        notification_type = "Working"
+        if finish_reason == "STOP" or finish_reason == "DONE" or finish_reason == "FINISH_REASON_UNSPECIFIED":
+            # Heuristic for completion, although stop is most common
+            notification_type = "Working" # Default to working unless we are sure
+            
+        # Check if we should mark as done
+        if finish_reason in ["STOP", "COMPLETED"]:
+             notification_type = "Done"
+        else:
+             notification_type = "Working"
+
         message = f"{wd}: {short_response}"
         detailed_message = f"{wd}: {message_content}"
         title = f"Gemini - {notification_type}"
         
         payload = {
+            "identifier": identifier,
             "message": message[:50],
             "title": title,
             "link": "",
-            "detailed_message": detailed_message
+            "detailed_message": detailed_message,
+            "quiet": True
         }
         
         url = "http://127.0.0.1:8089/interactions"
