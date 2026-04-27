@@ -6,6 +6,7 @@ function ChatHeader({ theme, thread, onMenu, isPhone, solo = false }) {
     <div style={{
       display: 'flex', alignItems: 'center', gap: 12,
       padding: '14px 20px',
+      paddingTop: isPhone ? 'calc(14px + env(safe-area-inset-top, 0px))' : '14px',
       borderBottom: `1px solid ${theme.border}`,
       background: theme.panel,
       flexShrink: 0,
@@ -57,7 +58,9 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
 
   return (
     <div style={{
-      padding: 12, borderTop: `1px solid ${theme.border}`,
+      padding: 12, 
+      paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+      borderTop: `1px solid ${theme.border}`,
       background: theme.panel, flexShrink: 0,
     }}>
       <div style={{
