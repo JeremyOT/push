@@ -35,6 +35,7 @@ var staticFS embed.FS
 
 type Interaction struct {
 	ID              int64     `json:"id"`
+	Identifier      string    `json:"identifier,omitempty"`
 	Title           string    `json:"title"`
 	Message         string    `json:"message"`
 	DetailedMessage string    `json:"detailed_message"`
@@ -42,6 +43,7 @@ type Interaction struct {
 	IsUser          bool      `json:"is_user"`
 	Quiet           bool      `json:"quiet"`
 	Timestamp       time.Time `json:"timestamp"`
+	Update          bool      `json:"update,omitempty"`
 }
 
 var vapidPrivateKey string
@@ -331,6 +333,7 @@ func initDB(db *sql.DB) error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS interactions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			identifier TEXT DEFAULT '',
 			title TEXT DEFAULT '',
 			message TEXT NOT NULL,
 			detailed_message TEXT DEFAULT '',
@@ -358,6 +361,7 @@ func initDB(db *sql.DB) error {
 	}
 
 	// Add columns if they don't exist (migration)
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN identifier TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN title TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN link TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
@@ -413,15 +417,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -433,7 +437,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err != nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -476,16 +480,44 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 }
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
-	res, err := db.Exec("INSERT INTO interactions (title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?)", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
-	if err != nil {
-		return err
+	if i.Identifier != "" {
+		// Check if it already exists
+		var id int64
+		var timestamp time.Time
+		err := db.QueryRow("SELECT id, timestamp FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp)
+		if err == nil {
+			// Exists, update it
+			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, id)
+			if err != nil {
+				return err
+			}
+			i.ID = id
+			i.Timestamp = timestamp
+			i.Update = true
+		} else if err == sql.ErrNoRows {
+			// Not found, insert new
+			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
+			if err != nil {
+				return err
+			}
+			id, _ := res.LastInsertId()
+			i.ID = id
+			i.Timestamp = time.Now().UTC()
+		} else {
+			return err
+		}
+	} else {
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
+		if err != nil {
+			return err
+		}
+		id, _ := res.LastInsertId()
+		i.ID = id
+		i.Timestamp = time.Now().UTC()
 	}
-	id, _ := res.LastInsertId()
-	i.ID = id
-	i.Timestamp = time.Now().UTC()
 
-	// Trigger Push for non-user messages only, and only if not quiet
-	if !i.IsUser && !i.Quiet {
+	// Trigger Push for non-user messages only, and only if not quiet and not an update
+	if !i.IsUser && !i.Quiet && !i.Update {
 		go sendPushNotifications(db, i.Title, i.Message, i.Link)
 	}
 	// Broadcast for streaming to all clients
@@ -811,12 +843,12 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		defer broadcaster.Unsubscribe(ch)
 
 		sentIds := make(map[int64]bool)
-		rows, err := db.Query("SELECT id, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
+		rows, err := db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err == nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err == nil {
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()

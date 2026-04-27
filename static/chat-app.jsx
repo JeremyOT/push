@@ -87,6 +87,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     return {
       id: msg.id,
+      identifier: msg.identifier,
+      update: msg.update,
       kind: 'agent',
       agent: agentId,
       status: status,
@@ -136,10 +138,25 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.id > newestId.current) {
+              if (msg.id > newestId.current || msg.update) {
                 const mapped = mapMessage(msg);
-                setMessages(prev => [...prev, mapped]);
-                newestId.current = msg.id;
+                setMessages(prev => {
+                  if (msg.identifier) {
+                    const idx = prev.findIndex(m => m.identifier === msg.identifier);
+                    if (idx !== -1) {
+                      const next = [...prev];
+                      next[idx] = mapped;
+                      return next;
+                    }
+                  }
+                  if (msg.id > newestId.current) {
+                    return [...prev, mapped];
+                  }
+                  return prev;
+                });
+                if (msg.id > newestId.current) {
+                  newestId.current = msg.id;
+                }
               }
             } catch (e) {
               console.error('Error parsing stream line:', e);
@@ -166,10 +183,24 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (data.length > 0) {
                 const mapped = data.map(mapMessage);
                 setMessages(prev => {
-                    const existingIds = new Set(prev.map(m => m.id));
-                    const newOnes = mapped.filter(m => !existingIds.has(m.id));
-                    if (newOnes.length === 0) return prev;
-                    return [...prev, ...newOnes];
+                    const next = [...prev];
+                    let changed = false;
+                    mapped.forEach(m => {
+                        if (m.identifier) {
+                            const idx = next.findIndex(existing => existing.identifier === m.identifier);
+                            if (idx !== -1) {
+                                next[idx] = m;
+                                changed = true;
+                                return;
+                            }
+                        }
+                        const exists = next.some(existing => existing.id === m.id);
+                        if (!exists) {
+                            next.push(m);
+                            changed = true;
+                        }
+                    });
+                    return changed ? next : prev;
                 });
                 newestId.current = data[data.length - 1].id;
             }

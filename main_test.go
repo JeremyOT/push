@@ -255,6 +255,60 @@ func TestHandleInteractions(t *testing.T) {
 		t.Error("Expected non-zero ID")
 	}
 
+	// Test POST with Identifier (Insert)
+	interactionID := Interaction{
+		Identifier: "task-1",
+		Title:      "Task 1",
+		Message:    "Started",
+	}
+	bodyID, _ := json.Marshal(interactionID)
+	reqID := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyID))
+	wID := httptest.NewRecorder()
+	handler(wID, reqID)
+
+	var savedID Interaction
+	json.Unmarshal(wID.Body.Bytes(), &savedID)
+	if savedID.Identifier != "task-1" || savedID.Message != "Started" || savedID.Update {
+		t.Errorf("Unexpected saved interaction: %+v", savedID)
+	}
+
+	// Test POST with same Identifier (Update)
+	interactionUpdate := Interaction{
+		Identifier: "task-1",
+		Title:      "Task 1",
+		Message:    "Completed",
+	}
+	bodyUpdate, _ := json.Marshal(interactionUpdate)
+	reqUpdate := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyUpdate))
+	wUpdate := httptest.NewRecorder()
+	handler(wUpdate, reqUpdate)
+
+	var savedUpdate Interaction
+	json.Unmarshal(wUpdate.Body.Bytes(), &savedUpdate)
+	if savedUpdate.ID != savedID.ID || savedUpdate.Message != "Completed" || !savedUpdate.Update {
+		t.Errorf("Expected update of same ID, got: %+v", savedUpdate)
+	}
+
+	// Verify in GET
+	reqGET := httptest.NewRequest("GET", "/interactions", nil)
+	wGET := httptest.NewRecorder()
+	handler(wGET, reqGET)
+	var interactions []Interaction
+	json.Unmarshal(wGET.Body.Bytes(), &interactions)
+	
+	found := false
+	for _, it := range interactions {
+		if it.Identifier == "task-1" {
+			found = true
+			if it.Message != "Completed" {
+				t.Errorf("Expected 'Completed', got '%s'", it.Message)
+			}
+		}
+	}
+	if !found {
+		t.Error("Did not find interaction with identifier 'task-1'")
+	}
+
 	// Test POST with Quiet
 	interactionQuiet := Interaction{
 		Title:   "Quiet POST",
@@ -289,11 +343,11 @@ func TestHandleInteractions(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if len(list) != 2 {
-		t.Errorf("Expected 2 interactions, got %d", len(list))
+	if len(list) != 3 {
+		t.Errorf("Expected 3 interactions, got %d", len(list))
 	}
-	if !list[1].Quiet {
-		t.Error("Expected second interaction to have quiet=true")
+	if !list[2].Quiet {
+		t.Error("Expected last interaction to have quiet=true")
 	}
 }
 
@@ -335,7 +389,7 @@ func TestHandleInteractionsPagination(t *testing.T) {
 
 	// Insert 10 interactions
 	for i := 1; i <= 10; i++ {
-		db.Exec("INSERT INTO interactions (message) VALUES (?)", fmt.Sprintf("Message %d", i))
+		db.Exec("INSERT INTO interactions (identifier, message) VALUES (?, ?)", "", fmt.Sprintf("Message %d", i))
 	}
 
 	handler := handleInteractions(db)

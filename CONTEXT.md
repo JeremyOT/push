@@ -88,4 +88,8 @@ go build -ldflags="-w -s" -o push main.go
 - Fixed iPhone layout issues by enabling full-screen support with `viewport-fit=cover` and adding `safe-area-inset` padding to the chat header and composer, replacing the previous mock `IOSDevice` frame.
 - Enabled dynamic app icon updating in the web interface by using `icon.svg` as the source, allowing the backend to replace it with a custom icon when the `--icon` flag is used.
 - Added dynamic agent detection in the web interface; messages with titles formatted as "AgentName - Status" (e.g., "Gemini - Done" or "Claude - permission_prompt") are now correctly attributed to that agent with its corresponding design-specified colors and icons, defaulting to "Remote".
+- Added support for dynamic in-place message updates via an optional user-supplied `identifier`.
+- Updated database schema and `Interaction` struct to include the `identifier` field.
+- Implemented upsert logic in `saveInteraction` to update existing messages if an `identifier` is provided and already exists.
+- Enhanced web interface to automatically replace messages in the UI when an update with the same `identifier` is received via stream or polling.
 - Refined agent status display to show the "Done" status when the title ends with " - Done", and the "Working" status when it ends with " - Working".
