@@ -87,3 +87,4 @@ go build -ldflags="-w -s" -o push main.go
 - Renamed the default message sender from "Gemini" to "Remote" with a neutral color scheme and updated all message mapping logic.
 - Fixed iPhone layout issues by enabling full-screen support with `viewport-fit=cover` and adding `safe-area-inset` padding to the chat header and composer, replacing the previous mock `IOSDevice` frame.
 - Enabled dynamic app icon updating in the web interface by using `icon.svg` as the source, allowing the backend to replace it with a custom icon when the `--icon` flag is used.
+- Added dynamic agent detection in the web interface; messages with titles prefixed by an agent name (e.g., "Gemini-" or "Claude-") are now correctly attributed to that agent with its corresponding design-specified colors and icons, defaulting to "Remote".

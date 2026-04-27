@@ -40,12 +40,26 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       };
     }
 
+    let agentId = 'remote';
+    let displayTitle = msg.title || '';
+    
+    // Parse agent from title prefix if present (e.g. "Gemini-Pro ...")
+    if (msg.title) {
+      const match = msg.title.match(/^(\w+)-/);
+      if (match) {
+        const potential = match[1].toLowerCase();
+        if (AGENTS[potential]) {
+          agentId = potential;
+        }
+      }
+    }
+
     // Try to detect tool or approval from title/message
     if (msg.title && (msg.title.includes('Approval') || msg.title.includes('Approve'))) {
       return {
         id: msg.id,
         kind: 'approval',
-        agent: 'remote',
+        agent: agentId,
         time: formatTime(msg.timestamp),
         title: msg.title,
         summary: msg.message,
@@ -58,7 +72,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return {
         id: msg.id,
         kind: 'tool',
-        agent: 'remote',
+        agent: agentId,
         time: formatTime(msg.timestamp),
         tool: 'shell',
         title: msg.title,
@@ -70,7 +84,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return {
       id: msg.id,
       kind: 'agent',
-      agent: 'remote',
+      agent: agentId,
       status: 'done',
       time: formatTime(msg.timestamp),
       text: msg.detailed_message || msg.message,

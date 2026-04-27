@@ -10,6 +10,22 @@ const AGENTS = {
     color: '#9aa3ad',
     colorSoft: 'rgba(154,163,173,0.16)',
   },
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    short: 'GM',
+    model: '2.5-pro',
+    color: '#4f8ef7',
+    colorSoft: 'rgba(79,142,247,0.16)',
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude',
+    short: 'CL',
+    model: 'sonnet-4.5',
+    color: '#d97757',
+    colorSoft: 'rgba(217,119,87,0.16)',
+  },
 };
 
 // status: 'done' | 'idle' | 'working' | 'error' | 'awaiting'
