@@ -3,7 +3,7 @@
 // the brand mark across the rail, sidebar header, and page favicon.
 
 const APP_ICON = {
-  src: 'favicon.png',          // path or data: URL
+  src: 'icon.svg',          // path or data: URL
   alt: 'Push',
   // The icon's own background — set to 'transparent' if your icon is a
   // standalone glyph that should sit on the surface tile.

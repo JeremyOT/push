@@ -86,3 +86,4 @@ go build -ldflags="-w -s" -o push main.go
 - Maintained compatibility with `-application-title`, `-icon`, and `-interactive` flags by adapting the new design to the backend's injection patterns.
 - Renamed the default message sender from "Gemini" to "Remote" with a neutral color scheme and updated all message mapping logic.
 - Fixed iPhone layout issues by enabling full-screen support with `viewport-fit=cover` and adding `safe-area-inset` padding to the chat header and composer, replacing the previous mock `IOSDevice` frame.
+- Enabled dynamic app icon updating in the web interface by using `icon.svg` as the source, allowing the backend to replace it with a custom icon when the `--icon` flag is used.
