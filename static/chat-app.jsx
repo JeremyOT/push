@@ -29,13 +29,20 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   };
 
   const mapMessage = (msg) => {
+    const base = {
+      id: msg.id,
+      identifier: msg.identifier,
+      update: msg.update,
+      time: formatTime(msg.timestamp),
+      text: msg.detailed_message || msg.message,
+      link: msg.link,
+      title: msg.title,
+    };
+
     if (msg.is_user) {
       return {
-        id: msg.id,
+        ...base,
         kind: 'user',
-        time: formatTime(msg.timestamp),
-        text: msg.message,
-        link: msg.link
       };
     }
 
@@ -55,11 +62,9 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     // Try to detect tool or approval from title/message
     if (msg.title && (msg.title.includes('Approval') || msg.title.includes('Approve'))) {
       return {
-        id: msg.id,
+        ...base,
         kind: 'approval',
         agent: agentId,
-        time: formatTime(msg.timestamp),
-        title: msg.title,
         summary: msg.message,
         risk: 'unknown',
         actions: ['Approve', 'Deny']
@@ -68,12 +73,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     if (msg.title && (msg.title.includes('Run') || msg.title.includes('$'))) {
       return {
-        id: msg.id,
+        ...base,
         kind: 'tool',
         agent: agentId,
-        time: formatTime(msg.timestamp),
         tool: 'shell',
-        title: msg.title,
         duration: '',
         lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l }))
       };
@@ -86,16 +89,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     return {
-      id: msg.id,
-      identifier: msg.identifier,
-      update: msg.update,
+      ...base,
       kind: 'agent',
       agent: agentId,
       status: status,
-      time: formatTime(msg.timestamp),
-      text: msg.detailed_message || msg.message,
-      title: msg.title,
-      link: msg.link
     };
   };
 
@@ -138,25 +135,23 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              if (msg.id > newestId.current || msg.update) {
-                const mapped = mapMessage(msg);
-                setMessages(prev => {
-                  if (msg.identifier) {
-                    const idx = prev.findIndex(m => m.identifier === msg.identifier);
-                    if (idx !== -1) {
-                      const next = [...prev];
-                      next[idx] = mapped;
-                      return next;
-                    }
+              const mapped = mapMessage(msg);
+              setMessages(prev => {
+                if (msg.identifier) {
+                  const idx = prev.findIndex(m => m.identifier === msg.identifier);
+                  if (idx !== -1) {
+                    const next = [...prev];
+                    next[idx] = mapped;
+                    return next;
                   }
-                  if (msg.id > newestId.current) {
-                    return [...prev, mapped];
-                  }
-                  return prev;
-                });
-                if (msg.id > newestId.current) {
-                  newestId.current = msg.id;
                 }
+                if (!prev.some(m => m.id === msg.id)) {
+                  return [...prev, mapped];
+                }
+                return prev;
+              });
+              if (msg.id > newestId.current) {
+                newestId.current = msg.id;
               }
             } catch (e) {
               console.error('Error parsing stream line:', e);

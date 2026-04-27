@@ -91,3 +91,4 @@ go build -ldflags="-w -s" -o push main.go
 - Implementation of dynamic in-place message updates via an optional user-supplied `identifier`, with full support in the Go backend and React frontend.
 - Updated `hooks/gemini/aftermodel.py` to supply a stable message identifier derived from the hash of the `llm_request` field, enabling in-place updates of model responses as they are generated.
 - Refined agent status display in the web interface and hooks to show the "Done" status when appropriate.
+- Fixed a regression where user messages were not appearing in the feed by correcting the `mapMessage` logic and refining state update conditions to properly handle both new messages and in-place updates.
