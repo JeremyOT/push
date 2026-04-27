@@ -826,6 +826,8 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				if err := dec.Decode(&i); err != nil {
 					return
 				}
+				i.IsUser = false
+				saveInteraction(db, &i)
 				incoming <- i
 			}
 		}()
