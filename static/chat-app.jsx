@@ -43,9 +43,9 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     let agentId = 'remote';
     let displayTitle = msg.title || '';
     
-    // Parse agent from title prefix if present (e.g. "Gemini-Pro ...")
+    // Parse agent from title prefix if present (e.g. "Gemini - Done")
     if (msg.title) {
-      const match = msg.title.match(/^(\w+)-/);
+      const match = msg.title.match(/^(\w+)\s+-\s+/);
       if (match) {
         const potential = match[1].toLowerCase();
         if (AGENTS[potential]) {
