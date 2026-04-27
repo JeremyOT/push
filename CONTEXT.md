@@ -80,3 +80,7 @@ go build -ldflags="-w -s" -o push main.go
 - Enhanced `handleInteractions` and `handleService` to support the `quiet` field in both GET and POST requests.
 - Added unit tests to verify `quiet` field persistence and push notification suppression.
 - Enhanced `tmux` mode to only block on EOF if `stdin` is not a terminal, restoring normal interactive quit behavior.
+- Updated the web interface with a new React-based design from "AI Chat.zip", including support for multiple message types (agent, user, tool, approval) and dark/light modes.
+- Integrated the new design with the existing Go backend, supporting real-time polling and interactive message sending.
+- Added support for titles and links in the new message bubbles.
+- Maintained compatibility with `-application-title`, `-icon`, and `-interactive` flags by adapting the new design to the backend's injection patterns.
