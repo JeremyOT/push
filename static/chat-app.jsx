@@ -85,7 +85,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       id: msg.id,
       kind: 'agent',
       agent: agentId,
-      status: 'done',
+      status: msg.title && msg.title.endsWith(' - Done') ? 'done' : null,
       time: formatTime(msg.timestamp),
       text: msg.detailed_message || msg.message,
       title: msg.title,
