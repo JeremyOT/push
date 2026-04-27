@@ -81,11 +81,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       };
     }
 
+    let status = null;
+    if (msg.title) {
+      if (msg.title.endsWith(' - Done')) status = 'done';
+      else if (msg.title.endsWith(' - Working')) status = 'working';
+    }
+
     return {
       id: msg.id,
       kind: 'agent',
       agent: agentId,
-      status: msg.title && msg.title.endsWith(' - Done') ? 'done' : null,
+      status: status,
       time: formatTime(msg.timestamp),
       text: msg.detailed_message || msg.message,
       title: msg.title,
