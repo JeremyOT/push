@@ -8,6 +8,19 @@ It uses the Push API (https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
 Usage
 -----
 
+### Deployment
+
+A `deploy.sh` script is provided to build and install the `push` binary to your local bin directory and restart the service:
+
+```bash
+./deploy.sh
+```
+
+This script:
+1.  Builds the project with optimized flags (`-w -s`).
+2.  Moves the resulting `push` binary to `~/bin/push`.
+3.  Executes `serve-push` to restart the service (ensure `serve-push` is in your `PATH`).
+
 ### Running the Server
 
 Start the server with default settings:
@@ -34,8 +47,11 @@ Custom configuration:
 | `--reset-vapid` | Delete existing VAPID keys from the database | `false` |
 | `--m` | Message content (triggers client mode to send a message) | `""` |
 | `--t` | Title for the message (used with `--m`) | `""` |
-| `--cli-service` | Enable interactive CLI mode | `""` |
-| `--tmux-target` | Target pane for `tmux` mode (e.g., `session:window.pane`) | `""` |
+| `--cli-service` | Enable interactive CLI mode (`text`, `json`, `jsonr`, `tmux`) | `""` |
+| `--tmux-target` | Target pane for `tmux` mode (e.g., `%1` or `session:window.pane`) | `""` |
+| `--session-id` | Unique ID for the current CLI session | `""` |
+| `--session-name` | Display name for the session in the web UI | `""` |
+| `--model` | Model name associated with the session (e.g., `gemini`) | `""` |
 
 ### Sending Messages from CLI
 
@@ -43,6 +59,31 @@ You can send a quick message without starting the server or a persistent CLI ses
 ```bash
 ./push --address=localhost:8089 -t "System Alert" -m "Memory usage is high"
 ```
+
+Gemini Agent Integration
+------------------------
+
+The `gemini-agent` script provides a seamless way to connect a `gemini-cli` session to the Push app for real-time 2-way communication.
+
+### Usage
+
+Run the script from within a `tmux` session:
+
+```bash
+./gemini-agent [session-name] [--resume] [--yolo]
+```
+
+*   **`session-name`**: (Optional) A display name for the session. Defaults to the current directory name.
+*   **`--resume`**: Resume the latest `gemini-cli` session.
+*   **`--yolo`**: Pass the `-y` flag to `gemini-cli` for autonomous execution.
+
+### How it Works
+
+1.  **Background Client**: It starts a `push` client in the background configured with a shared `session_id`.
+2.  **2-Way Communication**: 
+    *   **Outgoing**: Messages you type in the Push web UI are automatically forwarded to your active `tmux` pane.
+    *   **Incoming**: Model responses are captured via hooks (`aftermodel.py`, `afteragent.py`) and sent to the Push app.
+3.  **Synchronization**: The script ensures that both the CLI and the web UI are scoped to the same session, providing a unified view of the agent's activity and status.
 
 Web Customization
 ----------------
