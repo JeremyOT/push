@@ -912,6 +912,99 @@ func containsMessage(msgs []string, text string) bool {
 	return false
 }
 
+func TestSessionActivityTracking(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	handler := handleService(db)
+
+	// Listen for broadcasts
+	ch := broadcaster.Subscribe()
+	defer broadcaster.Unsubscribe(ch)
+
+	// Connect a client with session ID
+	req := httptest.NewRequest("GET", "/service?session_id=test-session", nil)
+	w := &streamRecorder{ResponseRecorder: httptest.NewRecorder(), data: make(chan string, 10)}
+	ctx, cancel := context.WithCancel(context.Background())
+	req = req.WithContext(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		handler(w, req)
+		close(done)
+	}()
+
+	// Should receive session-active broadcast
+	select {
+	case i := <-ch:
+		if i.Title != "session-active" || i.SessionID != "test-session" {
+			t.Errorf("Expected session-active broadcast, got: %+v", i)
+		}
+	case <-time.After(1 * time.Second):
+		t.Error("Timed out waiting for session-active broadcast")
+	}
+
+	// Disconnect client
+	cancel()
+	<-done
+
+	// Should receive session-inactive broadcast
+	select {
+	case i := <-ch:
+		if i.Title != "session-inactive" || i.SessionID != "test-session" {
+			t.Errorf("Expected session-inactive broadcast, got: %+v", i)
+		}
+	case <-time.After(1 * time.Second):
+		t.Error("Timed out waiting for session-inactive broadcast")
+	}
+}
+
+func TestHeartbeatActiveSessions(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// Clear active sessions
+	sessionsMu.Lock()
+	activeSessions = make(map[string]int)
+	sessionsMu.Unlock()
+
+	handler := handleService(db)
+
+	// Connect client 1
+	req1 := httptest.NewRequest("GET", "/service?session_id=s1", nil)
+	w1 := &streamRecorder{ResponseRecorder: httptest.NewRecorder(), data: make(chan string, 20)}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	req1 = req1.WithContext(ctx1)
+	go handler(w1, req1)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Connect client 2
+	req2 := httptest.NewRequest("GET", "/service?session_id=s2", nil)
+	w2 := &streamRecorder{ResponseRecorder: httptest.NewRecorder(), data: make(chan string, 20)}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	req2 = req2.WithContext(ctx2)
+	go handler(w2, req2)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify heartbeats will contain both (if we waited for ticker, but let's check the map)
+	sessionsMu.Lock()
+	count := len(activeSessions)
+	s1 := activeSessions["s1"]
+	s2 := activeSessions["s2"]
+	sessionsMu.Unlock()
+
+	if count != 2 || s1 != 1 || s2 != 1 {
+		t.Errorf("Expected 2 active sessions, got %d. s1=%d, s2=%d", count, s1, s2)
+	}
+
+	cancel1()
+	cancel2()
+}
+
 func TestRunCliClientMetadata(t *testing.T) {
 	db, tempDir := setupTestDB(t)
 	defer os.RemoveAll(tempDir)

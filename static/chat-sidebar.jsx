@@ -179,7 +179,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, s
             </div>
           </>
         )}
-        <SectionLabel theme={theme}>Recent</SectionLabel>
+        <SectionLabel theme={theme}>Active</SectionLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {rest.map((t) => (
             <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />

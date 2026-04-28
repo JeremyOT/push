@@ -54,6 +54,8 @@ var vapidPrivateKey string
 var vapidPublicKey string
 var serverHostname string
 var customIcons = make(map[string][]byte)
+var activeSessions = make(map[string]int)
+var sessionsMu sync.Mutex
 
 type Broadcaster struct {
 	subscribers map[chan Interaction]bool
@@ -877,6 +879,30 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		}
 
 		sessionID := r.URL.Query().Get("session_id")
+		if sessionID != "" {
+			sessionsMu.Lock()
+			activeSessions[sessionID]++
+			if activeSessions[sessionID] == 1 {
+				go broadcaster.Broadcast(Interaction{
+					Title:     "session-active",
+					SessionID: sessionID,
+				})
+			}
+			sessionsMu.Unlock()
+
+			defer func() {
+				sessionsMu.Lock()
+				activeSessions[sessionID]--
+				if activeSessions[sessionID] <= 0 {
+					delete(activeSessions, sessionID)
+					go broadcaster.Broadcast(Interaction{
+						Title:     "session-inactive",
+						SessionID: sessionID,
+					})
+				}
+				sessionsMu.Unlock()
+			}()
+		}
 
 		if r.Method == http.MethodPost && r.URL.Query().Get("stream") == "false" {
 			dec := json.NewDecoder(r.Body)
@@ -980,7 +1006,17 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				}
 				// Handled by the goroutine above
 			case <-ticker.C:
-				w.Write([]byte("{}\n"))
+				sessionsMu.Lock()
+				var active []string
+				for sid := range activeSessions {
+					active = append(active, sid)
+				}
+				sessionsMu.Unlock()
+				msg := Interaction{
+					Title:   "heartbeat",
+					Message: strings.Join(active, ","),
+				}
+				json.NewEncoder(w).Encode(msg)
 				flusher.Flush()
 			case <-r.Context().Done():
 				return

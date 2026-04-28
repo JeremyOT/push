@@ -106,10 +106,11 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const processMessage = (msg, setMessages, setThreads) => {
     const mapped = mapMessage(msg);
     
-    // Handle session registration
+    // Handle session registration and activity
     if (msg.title === 'session-register' && msg.session_id) {
         setThreads(prev => {
-            if (prev.some(t => t.id === msg.session_id)) return prev;
+            const exists = prev.some(t => t.id === msg.session_id);
+            if (exists) return prev;
             return [...prev, {
                 id: msg.session_id,
                 agent: mapped.agent || 'remote',
@@ -119,11 +120,51 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 updated: mapped.time,
                 unread: 0,
                 pinned: false,
-                sessionId: msg.session_id
+                sessionId: msg.session_id,
+                active: true
             }];
         });
-        // We still might want to see the registration message in the main feed
     }
+
+    if (msg.title === 'session-active' && msg.session_id) {
+        setThreads(prev => {
+            return prev.map(t => t.id === msg.session_id ? { ...t, active: true } : t);
+        });
+    }
+
+    if (msg.title === 'session-inactive' && msg.session_id) {
+        setThreads(prev => {
+            // Remove thread if it becomes inactive (unless it's pinned/main feed)
+            const threadToRemove = prev.find(t => t.id === msg.session_id);
+            if (threadToRemove && !threadToRemove.pinned) {
+                if (activeId === msg.session_id) {
+                    setActiveId('t1');
+                }
+                return prev.filter(t => t.id !== msg.session_id);
+            }
+            return prev.map(t => t.id === msg.session_id ? { ...t, active: false } : t);
+        });
+    }
+
+    if (msg.title === 'heartbeat' && msg.message !== undefined) {
+        const activeIds = msg.message ? msg.message.split(',') : [];
+        setThreads(prev => {
+            let changed = false;
+            const next = prev.filter(t => {
+                if (t.pinned || t.id === 't1' || activeIds.includes(t.id)) {
+                    return true;
+                }
+                if (activeId === t.id) {
+                    setActiveId('t1');
+                }
+                changed = true;
+                return false;
+            });
+            return changed ? next : prev;
+        });
+    }
+
+    if (msg.id === 0) return; // Don't add status-only messages to message list
 
     setMessages(prev => {
       if (msg.identifier) {
