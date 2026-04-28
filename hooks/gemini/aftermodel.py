@@ -71,22 +71,41 @@ def main():
         else:
              status = "w"
 
-        message = f"{wd}: {short_response}"
+        message = short_response
+        if wd and message:
+            message = f"{wd}: {message}"
+            
         detailed_message = f"{message_content}"
         title = wd if wd else "Gemini"
-        
-        payload = {
-            "identifier": identifier,
-            "replace": True,
-            "message": message[:50],
-            "title": title,
-            "agent": "gemini",
-            "status": status,
-            "session_id": session_id,
-            "link": "",
-            "detailed_message": detailed_message,
-            "quiet": status == "w"
-        }
+
+        # Don't send empty messages unless it's a status update
+        if not message_content.strip():
+            if status == "d":
+                # Mark as done but don't replace content with empty string
+                payload = {
+                    "identifier": identifier,
+                    "replace": False, # Important: don't clear existing text
+                    "message": "",
+                    "detailed_message": "",
+                    "status": "d",
+                    "quiet": False
+                }
+                # We can still send other metadata if needed
+            else:
+                return
+        else:
+            payload = {
+                "identifier": identifier,
+                "replace": True,
+                "message": message[:50],
+                "title": title,
+                "agent": "gemini",
+                "status": status,
+                "session_id": session_id,
+                "link": "",
+                "detailed_message": detailed_message,
+                "quiet": status == "w"
+            }
         
         url = "http://127.0.0.1:8089/interactions"
         req = urllib.request.Request(
