@@ -47,6 +47,7 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Updated `gemini-agent` script to prioritize using a local `./push` binary if available, falling back to the system `push` command otherwise.
+- Integrated the `/run` command with the project's deployment process: sending `/run` as a user message now triggers the `./deploy.sh` script in the background.
 - Removed `/new thread` and `/search` commands from the command palette.
 - Streamlined the sidebar by removing the search box and "New task" button.
 - Enhanced the sidebar footer: agent icons are now interactive and select the corresponding thread when clicked.

@@ -481,6 +481,16 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
+			// Special handling for /run command to trigger deploy
+			if i.IsUser && strings.HasPrefix(strings.TrimSpace(i.Message), "/run") {
+				go func() {
+					log.Printf("Executing deploy.sh via /run command")
+					cmd := exec.Command("./deploy.sh")
+					// Start and forget, it handles its own logging/backgrounding
+					_ = cmd.Start()
+				}()
+			}
+
 			if err := saveInteraction(db, &i); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return

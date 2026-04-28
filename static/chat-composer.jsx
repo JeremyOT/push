@@ -139,7 +139,7 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
 }
 
 const PALETTE_ITEMS = [
-  { id: 'p1', cmd: '/run', label: 'Run a script', desc: 'Execute a shell command via the active agent', icon: 'terminal' },
+  { id: 'p1', cmd: '/run', label: 'Deploy', desc: 'Execute the project deploy script', icon: 'terminal' },
   { id: 'p2', cmd: '/diff', label: 'Show diff', desc: 'Inline diff between current branch and main', icon: 'file' },
   { id: 'p3', cmd: '/explain', label: 'Explain code', desc: 'Walk through a file or selection', icon: 'sparkle' },
   { id: 'p4', cmd: '/test', label: 'Run tests', desc: 'Execute test suite and summarize failures', icon: 'check' },
