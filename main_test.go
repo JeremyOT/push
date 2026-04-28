@@ -575,10 +575,21 @@ func TestHandleService(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &received); err != nil {
 			t.Fatalf("Failed to unmarshal streamed interaction: %v", err)
 		}
+		// If it's a heartbeat, read the next one
+		if received.Title == "heartbeat" {
+			select {
+			case line := <-w_stream.data:
+				if err := json.Unmarshal([]byte(line), &received); err != nil {
+					t.Fatalf("Failed to unmarshal streamed interaction: %v", err)
+				}
+			case <-time.After(500 * time.Millisecond):
+				t.Error("Did not receive any streamed interaction after heartbeat")
+			}
+		}
+
 		// It might be the first message (Service Message) or the "Stream me" one.
-		// Since Service Message was saved to DB, it might be sent as initial data.
 		if received.Message != "Service Message" && received.Message != "Stream me" {
-			t.Errorf("Unexpected message: %s", received.Message)
+			t.Errorf("Unexpected message: %s (Title: %s)", received.Message, received.Title)
 		}
 	case <-time.After(500 * time.Millisecond):
 		t.Error("Did not receive any streamed interaction")

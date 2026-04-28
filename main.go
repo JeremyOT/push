@@ -965,6 +965,19 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		ch := broadcaster.Subscribe()
 		defer broadcaster.Unsubscribe(ch)
 
+		// Send initial heartbeat with active sessions
+		sessionsMu.Lock()
+		var initialActive []string
+		for sid := range activeSessions {
+			initialActive = append(initialActive, sid)
+		}
+		sessionsMu.Unlock()
+		json.NewEncoder(w).Encode(Interaction{
+			Title:   "heartbeat",
+			Message: strings.Join(initialActive, ","),
+		})
+		flusher.Flush()
+
 		sentIds := make(map[int64]bool)
 		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE timestamp > ?"
 		args := []interface{}{startTime}

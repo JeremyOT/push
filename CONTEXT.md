@@ -41,6 +41,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed stale active session list on reload by sending an immediate heartbeat with currently active session IDs upon connection to the `/service` stream.
+- Fixed sidebar timestamps and snippets not updating by ensuring `processMessage` updates the corresponding thread's state when a new message arrives.
+- Improved session activity tracking in the frontend by differentiating between historical and real-time messages.
 - Added `--yolo` flag to `gemini-agent` which passes `-y` to the underlying `gemini` CLI.
 - Fixed a bug in `gemini-agent` where the background `push` client would exit immediately due to incorrect terminal detection for redirected `stdin` (`/dev/null`).
 - Implemented robust terminal detection in `main.go` using `ioctl` (`TIOCGWINSZ`) to accurately distinguish between a real TTY and background/redirected input.

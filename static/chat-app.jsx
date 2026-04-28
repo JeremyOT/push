@@ -103,7 +103,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     };
   };
 
-  const processMessage = (msg, setMessages, setThreads) => {
+  const processMessage = (msg, setMessages, setThreads, isHistory = false) => {
     const mapped = mapMessage(msg);
     
     // Handle session registration and activity
@@ -121,7 +121,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 unread: 0,
                 pinned: false,
                 sessionId: msg.session_id,
-                active: true
+                active: !isHistory // Only mark active if real-time
             }];
         });
     }
@@ -150,7 +150,15 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         const activeIds = msg.message ? msg.message.split(',') : [];
         setThreads(prev => {
             let changed = false;
-            const next = prev.filter(t => {
+            const updated = prev.map(t => {
+                if (activeIds.includes(t.id) && !t.active) {
+                    changed = true;
+                    return { ...t, active: true };
+                }
+                return t;
+            });
+
+            const filtered = updated.filter(t => {
                 if (t.pinned || t.id === 't1' || activeIds.includes(t.id)) {
                     return true;
                 }
@@ -160,7 +168,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 changed = true;
                 return false;
             });
-            return changed ? next : prev;
+            return changed ? filtered : prev;
         });
     }
 
@@ -184,6 +192,35 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (msg.id > newestId.current) {
       newestId.current = msg.id;
     }
+
+    // Update thread snippet and timestamp
+    setThreads(prev => {
+        let changed = false;
+        const next = prev.map(t => {
+            // Update the specific session thread
+            if (msg.session_id && t.id === msg.session_id) {
+                changed = true;
+                return {
+                    ...t,
+                    snippet: mapped.text || t.snippet,
+                    updated: mapped.time,
+                    // If we receive a message from a session in real-time, it must be active
+                    active: isHistory ? t.active : true 
+                };
+            }
+            // Update main feed snippet/time
+            if (t.id === 't1') {
+                changed = true;
+                return {
+                    ...t,
+                    snippet: (mapped.title ? mapped.title + ': ' : '') + (mapped.text || ''),
+                    updated: mapped.time
+                };
+            }
+            return t;
+        });
+        return changed ? next : prev;
+    });
   };
 
   const fetchInitial = async () => {
@@ -192,7 +229,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       if (!response.ok) throw new Error('Failed to fetch');
       const data = await response.json();
       if (data.length > 0) {
-        data.forEach(msg => processMessage(msg, setMessages, setThreads));
+        data.forEach(msg => processMessage(msg, setMessages, setThreads, true));
       }
     } catch (error) {
       console.error('Error fetching initial messages:', error);
@@ -223,7 +260,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              processMessage(msg, setMessages, setThreads);
+              processMessage(msg, setMessages, setThreads, false);
             } catch (e) {
               console.error('Error parsing stream line:', e);
             }
