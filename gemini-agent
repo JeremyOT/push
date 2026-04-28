@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Default session name is current directory
+SESSION_NAME=$(basename "$PWD")
+
+# Optional user-submitted string override for session name
+if [ -n "$1" ]; then
+    SESSION_NAME="$1"
+fi
+
+# Generate a new session ID
+SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+# Get current tmux pane ID
+if [ -n "$TMUX" ]; then
+    TMUX_TARGET=$(tmux display-message -p '#{pane_id}')
+else
+    echo "Error: gemini-agent must be run inside a tmux session."
+    exit 1
+fi
+
+# Start push client in the background
+# Using the binary found at /Users/jeremyot/bin/push
+/Users/jeremyot/bin/push --cli-service tmux \
+    --session-id "$SESSION_ID" \
+    --session-name "$SESSION_NAME" \
+    --model gemini \
+    --tmux-target "$TMUX_TARGET" &
+
+PUSH_PID=$!
+
+# Hook to terminate push client when gemini-cli exits
+trap "kill $PUSH_PID 2>/dev/null" EXIT
+
+# Start gemini-cli with the session ID
+# GEMINI_SESSION_ID environment variable is used to set the session ID
+export GEMINI_SESSION_ID="$SESSION_ID"
+/opt/homebrew/bin/gemini
