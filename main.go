@@ -695,7 +695,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 
 	if mode == "tmux" {
 		defer func() {
-			exitMsg := "No longer forwarding responses"
+			exitMsg := fmt.Sprintf("[%s] No longer forwarding responses", title)
 			if clientID != "" {
 				exitMsg += fmt.Sprintf(" (Client ID: %s)", clientID)
 			}
@@ -758,7 +758,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
 			}
 			if mode == "tmux" {
-				msg := fmt.Sprintf("Now forwarding responses to %s", tmuxTarget)
+				msg := fmt.Sprintf("[%s] Now forwarding responses to %s", title, tmuxTarget)
 				if clientID != "" {
 					msg += fmt.Sprintf(" (Client ID: %s)", clientID)
 				}

@@ -23,7 +23,7 @@ def main():
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
         session_id = data.get("session_id", "")
-        prompt_response = data.get("prompt_response", "")
+        prompt_response = data.get("prompt_response", "").strip()
         
         message = f"{prompt_response}"
         title = wd if wd else "Gemini"

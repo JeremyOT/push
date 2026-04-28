@@ -52,6 +52,8 @@ go build -ldflags="-w -s" -o push main.go
 
 ## Recent Changes
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
+- Fixed a bug where push notifications from the `afteragent` hook were prefixed with multiple newlines by trimming the response text.
+- Enhanced "forwarding" status messages to include the session name (e.g., "[Session Name] Now forwarding responses to...").
 - Fixed a bug where the "Main Feed" snippet in the sidebar could be overwritten by older messages (e.g., when fetching missing thread info for active sessions); added a check to only update the Main Feed snippet if the message is newer or equal to the latest globally seen message.
 - Fixed stale sidebar message summaries after a restart: the web UI now fetches the latest interaction for every session upon initialization to ensure snippets and timestamps are accurate.
 - Enhanced `/interactions` endpoint with a `latest_per_session` parameter to support efficient sidebar initialization.
