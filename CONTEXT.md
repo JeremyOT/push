@@ -41,6 +41,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Enhanced in-place message updates to merge and preserve fields (title, link, status, agent) during incremental updates by identifier.
+- Updated `hooks/gemini/afteragent.py` to use the new `status` and `agent` fields, ensuring consistent status reporting across all Gemini hooks.
+- Refactored message handling to use explicit `status` and `agent` fields instead of parsing the title in both the web interface and CLI client.
+- Added `status` (w/d) and `agent` fields to the `interactions` table and `Interaction` struct for more robust message attribution and state tracking.
 - Fixed Gemini hooks (`afteragent.py`, `aftermodel.py`) to properly extract full model responses and enabled the `afteragent` hook.
 - Suppressed push notifications for user-sent messages (`is_user: true`) while maintaining immediate broadcast.
 - Broadened `/service` stream to include all messages (both user and service) for real-time updates across all clients.

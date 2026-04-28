@@ -25,11 +25,13 @@ def main():
         prompt_response = data.get("prompt_response", "")
         
         message = f"{wd}: {prompt_response}"
-        title = "Gemini - Done"
+        title = wd if wd else "Gemini"
         
         payload = {
             "message": message[:50],
             "title": title,
+            "agent": "gemini",
+            "status": "d",
             "link": "",
             "detailed_message": message,
             "quiet": False #True

@@ -62,29 +62,26 @@ def main():
         #if not finish_reason or short_response == "null":
         #    return
 
-        notification_type = "Working"
-        if finish_reason == "STOP" or finish_reason == "DONE" or finish_reason == "FINISH_REASON_UNSPECIFIED":
-            # Heuristic for completion, although stop is most common
-            notification_type = "Working" # Default to working unless we are sure
-            
-        # Check if we should mark as done
+        status = "w"
         if finish_reason in ["STOP", "COMPLETED"]:
-             notification_type = "Done"
+             status = "d"
         else:
-             notification_type = "Working"
+             status = "w"
 
         message = f"{wd}: {short_response}"
         detailed_message = f"{message_content}"
-        title = f"Gemini - {notification_type}"
+        title = wd if wd else "Gemini"
         
         payload = {
             "identifier": identifier,
             "replace": False,
             "message": message[:50],
             "title": title,
+            "agent": "gemini",
+            "status": status,
             "link": "",
             "detailed_message": detailed_message,
-            "quiet": notification_type == "Working"
+            "quiet": status == "w"
         }
         
         url = "http://127.0.0.1:8089/interactions"

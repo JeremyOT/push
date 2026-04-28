@@ -48,8 +48,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     let agentId = 'remote';
     
-    // Parse agent from title prefix if present (e.g. "Gemini - Done")
-    if (msg.title) {
+    if (msg.agent && AGENTS[msg.agent.toLowerCase()]) {
+      agentId = msg.agent.toLowerCase();
+    } else if (msg.title) {
+      // Fallback: Parse agent from title prefix if present (e.g. "Gemini - Done")
       const match = msg.title.match(/^(\w+)\s+-\s+/);
       if (match) {
         const potential = match[1].toLowerCase();
@@ -83,7 +85,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     let status = null;
-    if (msg.title) {
+    if (msg.status === 'w') status = 'working';
+    else if (msg.status === 'd') status = 'done';
+    else if (msg.title) {
+      // Fallback: Parse status from title
       if (msg.title.endsWith(' - Done')) status = 'done';
       else if (msg.title.endsWith(' - Working')) status = 'working';
     }

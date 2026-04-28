@@ -348,6 +348,59 @@ func TestHandleInteractions(t *testing.T) {
 		t.Error("Expected quiet to be true in response")
 	}
 
+	// Test POST with Status and Agent
+	interactionStatus := Interaction{
+		Agent:   "gemini",
+		Status:  "w",
+		Message: "Thinking...",
+	}
+	bodyStatus, _ := json.Marshal(interactionStatus)
+	reqStatus := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyStatus))
+	wStatus := httptest.NewRecorder()
+	handler(wStatus, reqStatus)
+
+	var savedStatus Interaction
+	json.Unmarshal(wStatus.Body.Bytes(), &savedStatus)
+	if savedStatus.Agent != "gemini" || savedStatus.Status != "w" {
+		t.Errorf("Expected agent=gemini, status=w, got: agent=%s, status=%s", savedStatus.Agent, savedStatus.Status)
+	}
+
+	// Verify in GET
+	reqGETStatus := httptest.NewRequest("GET", "/interactions", nil)
+	wGETStatus := httptest.NewRecorder()
+	handler(wGETStatus, reqGETStatus)
+	var interactionsStatus []Interaction
+	json.Unmarshal(wGETStatus.Body.Bytes(), &interactionsStatus)
+
+	foundStatus := false
+	for _, it := range interactionsStatus {
+		if it.ID == savedStatus.ID {
+			foundStatus = true
+			if it.Agent != "gemini" || it.Status != "w" {
+				t.Errorf("GET: Expected agent=gemini, status=w, got: agent=%s, status=%s", it.Agent, it.Status)
+			}
+		}
+	}
+	if !foundStatus {
+		t.Error("Did not find interaction with status and agent")
+	}
+
+	// Test POST with same Identifier (Merge: preserve title/agent/status if empty)
+	interactionMerge := Interaction{
+		Identifier: "task-1",
+		Message:    " (verified)",
+	}
+	bodyMerge, _ := json.Marshal(interactionMerge)
+	reqMerge := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodyMerge))
+	wMerge := httptest.NewRecorder()
+	handler(wMerge, reqMerge)
+
+	var savedMerge Interaction
+	json.Unmarshal(wMerge.Body.Bytes(), &savedMerge)
+	if savedMerge.Title != "Task 1" || !strings.Contains(savedMerge.Message, "verified") {
+		t.Errorf("Expected title 'Task 1' to be preserved, got '%s'. Message: '%s'", savedMerge.Title, savedMerge.Message)
+	}
+
 	// Test GET
 	req = httptest.NewRequest("GET", "/interactions", nil)
 	w = httptest.NewRecorder()
@@ -361,8 +414,8 @@ func TestHandleInteractions(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if len(list) != 3 {
-		t.Errorf("Expected 3 interactions, got %d", len(list))
+	if len(list) != 4 {
+		t.Errorf("Expected 4 interactions, got %d", len(list))
 	}
 	if !list[2].Quiet {
 		t.Error("Expected last interaction to have quiet=true")

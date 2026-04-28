@@ -45,6 +45,8 @@ type Interaction struct {
 	Timestamp       time.Time `json:"timestamp"`
 	Update          bool      `json:"update,omitempty"`
 	Replace         bool      `json:"replace,omitempty"`
+	Status          string    `json:"status,omitempty"`
+	Agent           string    `json:"agent,omitempty"`
 }
 
 var vapidPrivateKey string
@@ -341,7 +343,9 @@ func initDB(db *sql.DB) error {
 			link TEXT DEFAULT '',
 			is_user BOOLEAN DEFAULT 0,
 			quiet BOOLEAN DEFAULT 0,
-			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+			status TEXT DEFAULT '',
+			agent TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -368,6 +372,8 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN detailed_message TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN is_user BOOLEAN DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN quiet BOOLEAN DEFAULT 0")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN status TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN agent TEXT DEFAULT ''")
 
 	return nil
 }
@@ -418,15 +424,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -438,7 +444,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err != nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -485,16 +491,32 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		// Check if it already exists
 		var id int64
 		var timestamp time.Time
+		var existingTitle string
 		var existingMessage string
 		var existingDetailedMessage string
-		err := db.QueryRow("SELECT id, timestamp, message, detailed_message FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingMessage, &existingDetailedMessage)
+		var existingLink string
+		var existingStatus string
+		var existingAgent string
+		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent)
 		if err == nil {
 			// Exists, update it
+			if i.Title == "" {
+				i.Title = existingTitle
+			}
+			if i.Link == "" {
+				i.Link = existingLink
+			}
+			if i.Status == "" {
+				i.Status = existingStatus
+			}
+			if i.Agent == "" {
+				i.Agent = existingAgent
+			}
 			if !i.Replace {
 				i.Message = existingMessage + i.Message
 				i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
 			}
-			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, id)
+			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, agent = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, id)
 			if err != nil {
 				return err
 			}
@@ -503,7 +525,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			i.Update = true
 		} else if err == sql.ErrNoRows {
 			// Not found, insert new
-			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
+			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent)
 			if err != nil {
 				return err
 			}
@@ -514,7 +536,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			return err
 		}
 	} else {
-		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet) VALUES (?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet)
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent)
 		if err != nil {
 			return err
 		}
@@ -704,11 +726,20 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						}
 					}
 				} else {
-					author := i.Title
+					author := i.Agent
+					if author == "" {
+						author = i.Title
+					}
 					if author == "" {
 						author = "User"
 					}
-					fmt.Fprintf(stdout, "\r[%s] %s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, i.Message)
+					status := ""
+					if i.Status == "w" {
+						status = " (Working)"
+					} else if i.Status == "d" {
+						status = " (Done)"
+					}
+					fmt.Fprintf(stdout, "\r[%s] %s%s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, status, i.Message)
 				}
 			}
 
@@ -852,12 +883,12 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		defer broadcaster.Unsubscribe(ch)
 
 		sentIds := make(map[int64]bool)
-		rows, err := db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
+		rows, err := db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp); err == nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent); err == nil {
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()
