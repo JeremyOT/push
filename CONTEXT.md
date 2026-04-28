@@ -52,6 +52,7 @@ go build -ldflags="-w -s" -o push main.go
 
 ## Recent Changes
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
+- Fixed a bug where the "Main Feed" snippet in the sidebar could be overwritten by older messages (e.g., when fetching missing thread info for active sessions); added a check to only update the Main Feed snippet if the message is newer or equal to the latest globally seen message.
 - Fixed stale sidebar message summaries after a restart: the web UI now fetches the latest interaction for every session upon initialization to ensure snippets and timestamps are accurate.
 - Enhanced `/interactions` endpoint with a `latest_per_session` parameter to support efficient sidebar initialization.
 - Improved agent list reliability: the web UI now proactively fetches registration metadata for unknown active sessions identified via heartbeats, and uses message ID tracking (`after` parameter) during stream reconnection to ensure no registration messages are missed.

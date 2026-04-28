@@ -214,6 +214,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return prev;
     });
 
+    const isNewest = msg.id >= newestId.current;
     if (msg.id > newestId.current) {
       newestId.current = msg.id;
     }
@@ -224,6 +225,11 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         const next = prev.map(t => {
             // Update the specific session thread
             if (msg.session_id && t.id === msg.session_id) {
+                // For specific threads, we update if it's the newest globally
+                // or if we don't have a better check, we could check a per-thread lastId.
+                // For now, only update if it's at least as new as the latest globally seen.
+                if (!isNewest && !isHistory) return t;
+
                 changed = true;
                 return {
                     ...t,
@@ -235,7 +241,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 };
             }
             // Update main feed snippet/time
-            if (t.id === 't1') {
+            if (t.id === 't1' && isNewest) {
                 changed = true;
                 return {
                     ...t,
