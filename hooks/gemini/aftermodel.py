@@ -20,6 +20,7 @@ def main():
     try:
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
+        session_id = data.get("session_id", "")
         
         llm_request = data.get("llm_request")
         llm_response = data.get("llm_response", {})
@@ -79,6 +80,7 @@ def main():
             "title": title,
             "agent": "gemini",
             "status": status,
+            "session_id": session_id,
             "link": "",
             "detailed_message": detailed_message,
             "quiet": status == "w"

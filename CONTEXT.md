@@ -41,7 +41,12 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
-- Enhanced in-place message updates to merge and preserve fields (title, link, status, agent) during incremental updates by identifier.
+- Implemented per-agent filtering in the web UI using `session_id`. The main feed continues to show all messages, while specific agent threads filter by `session_id`.
+- Added dynamic thread creation in the frontend; agents registered via the CLI now appear automatically in the sidebar.
+- Added `--session-id`, `--session-name`, and `--model` flags to the CLI service for better agent attribution and session-scoped interactions.
+- Updated `hooks/gemini/afteragent.py` and `hooks/gemini/aftermodel.py` to extract and include `session_id` from Gemini CLI event data.
+- Enhanced `/service` endpoint with `session_id` filtering, ensuring clients only receive relevant messages when a session is active.
+- Enhanced in-place message updates to merge and preserve fields (title, link, status, agent, session_id) during incremental updates by identifier.
 - Updated `hooks/gemini/afteragent.py` to use the new `status` and `agent` fields, ensuring consistent status reporting across all Gemini hooks.
 - Refactored message handling to use explicit `status` and `agent` fields instead of parsing the title in both the web interface and CLI client.
 - Added `status` (w/d) and `agent` fields to the `interactions` table and `Interaction` struct for more robust message attribution and state tracking.

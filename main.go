@@ -47,6 +47,7 @@ type Interaction struct {
 	Replace         bool      `json:"replace,omitempty"`
 	Status          string    `json:"status,omitempty"`
 	Agent           string    `json:"agent,omitempty"`
+	SessionID       string    `json:"session_id,omitempty"`
 }
 
 var vapidPrivateKey string
@@ -104,6 +105,9 @@ func main() {
 	interactive := flag.Bool("interactive", false, "Enable interactive mode (allow sending messages from the web app)")
 	cliService := flag.String("cli-service", "", "Enable interactive CLI mode (modes: text, json, jsonr, tmux)")
 	tmuxTarget := flag.String("tmux-target", "", "Target tmux pane for 'tmux' mode (e.g., session:window.pane)")
+	sessionID := flag.String("session-id", "", "Session ID for the CLI service")
+	sessionName := flag.String("session-name", "", "Session name (display title) for the CLI service")
+	modelName := flag.String("model", "", "Model name for the CLI service")
 	flag.Parse()
 
 	if *cliService != "" {
@@ -115,7 +119,7 @@ func main() {
 			<-sigChan
 			cancel()
 		}()
-		runCliClient(ctx, *address, *cliService, *tmuxTarget, os.Stdin, os.Stdout, os.Stderr)
+		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *modelName, os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 
@@ -345,7 +349,8 @@ func initDB(db *sql.DB) error {
 			quiet BOOLEAN DEFAULT 0,
 			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 			status TEXT DEFAULT '',
-			agent TEXT DEFAULT ''
+			agent TEXT DEFAULT '',
+			session_id TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -374,6 +379,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN quiet BOOLEAN DEFAULT 0")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN status TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN agent TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN session_id TEXT DEFAULT ''")
 
 	return nil
 }
@@ -424,15 +430,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id > ? ORDER BY id ASC", after)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions ORDER BY id DESC LIMIT ?", limit)
 			}
 
 			if err != nil {
@@ -444,7 +450,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent); err != nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -497,7 +503,8 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingLink string
 		var existingStatus string
 		var existingAgent string
-		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent)
+		var existingSessionID string
+		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent, session_id FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent, &existingSessionID)
 		if err == nil {
 			// Exists, update it
 			if i.Title == "" {
@@ -512,11 +519,14 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			if i.Agent == "" {
 				i.Agent = existingAgent
 			}
+			if i.SessionID == "" {
+				i.SessionID = existingSessionID
+			}
 			if !i.Replace {
 				i.Message = existingMessage + i.Message
 				i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
 			}
-			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, agent = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, id)
+			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, agent = ?, session_id = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, id)
 			if err != nil {
 				return err
 			}
@@ -525,7 +535,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			i.Update = true
 		} else if err == sql.ErrNoRows {
 			// Not found, insert new
-			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent)
+			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID)
 			if err != nil {
 				return err
 			}
@@ -536,7 +546,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			return err
 		}
 	} else {
-		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent)
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID)
 		if err != nil {
 			return err
 		}
@@ -576,7 +586,7 @@ func sendMessage(address, message, title string) error {
 	return nil
 }
 
-func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
+func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, model string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
 		clientID = strings.TrimPrefix(mode, "tmux:")
@@ -596,8 +606,8 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 
 	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
 
-	sendMsg := func(text string, title string) {
-		i := Interaction{Message: text, Title: title}
+	sendMsg := func(text string, title string, agent string, status string) {
+		i := Interaction{Message: text, Title: title, SessionID: sessionID, Agent: agent, Status: status}
 		data, _ := json.Marshal(i)
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
@@ -608,18 +618,36 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 		}
 	}
 
+	if sessionID != "" {
+		title := sessionName
+		if title == "" {
+			title = "CLI Agent"
+		}
+		agent := "remote" // Default agent type for generic CLI
+		if model != "" {
+			// If we have a model, we might want to map it to a known agent type
+			if strings.Contains(strings.ToLower(model), "gemini") {
+				agent = "gemini"
+			} else if strings.Contains(strings.ToLower(model), "claude") {
+				agent = "claude"
+			}
+		}
+		// Sending registration message
+		sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
+	}
+
 	if mode == "tmux" {
 		msg := fmt.Sprintf("Now forwarding responses to %s", tmuxTarget)
 		if clientID != "" {
 			msg += fmt.Sprintf(" (Client ID: %s)", clientID)
 		}
-		sendMsg(msg, "tmux-service")
+		sendMsg(msg, "tmux-service", "", "")
 		defer func() {
 			exitMsg := "No longer forwarding responses"
 			if clientID != "" {
 				exitMsg += fmt.Sprintf(" (Client ID: %s)", clientID)
 			}
-			sendMsg(exitMsg, "tmux-service")
+			sendMsg(exitMsg, "tmux-service", "", "")
 			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
 		}()
 	}
@@ -637,9 +665,17 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 			}
 
 			url := fmt.Sprintf("http://%s/service", address)
+			params := []string{}
 			if !lastTimestamp.IsZero() {
-				url += "?timestamp=" + lastTimestamp.Format(time.RFC3339)
+				params = append(params, "timestamp="+lastTimestamp.Format(time.RFC3339))
 			}
+			if sessionID != "" {
+				params = append(params, "session_id="+sessionID)
+			}
+			if len(params) > 0 {
+				url += "?" + strings.Join(params, "&")
+			}
+			
 			req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -836,6 +872,8 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		sessionID := r.URL.Query().Get("session_id")
+
 		if r.Method == http.MethodPost && r.URL.Query().Get("stream") == "false" {
 			dec := json.NewDecoder(r.Body)
 			var i Interaction
@@ -844,6 +882,9 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			i.IsUser = false
+			if i.SessionID == "" {
+				i.SessionID = sessionID
+			}
 			saveInteraction(db, &i)
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -865,6 +906,9 @@ func handleService(db *sql.DB) http.HandlerFunc {
 					return
 				}
 				i.IsUser = false
+				if i.SessionID == "" {
+					i.SessionID = sessionID
+				}
 				saveInteraction(db, &i)
 				incoming <- i
 			}
@@ -883,12 +927,20 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		defer broadcaster.Unsubscribe(ch)
 
 		sentIds := make(map[int64]bool)
-		rows, err := db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent FROM interactions WHERE timestamp > ? ORDER BY id ASC", startTime)
+		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE timestamp > ?"
+		args := []interface{}{startTime}
+		if sessionID != "" {
+			query += " AND (session_id = ? OR session_id = '')"
+			args = append(args, sessionID)
+		}
+		query += " ORDER BY id ASC"
+
+		rows, err := db.Query(query, args...)
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent); err == nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID); err == nil {
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()
@@ -905,19 +957,24 @@ func handleService(db *sql.DB) http.HandlerFunc {
 				if !ok {
 					return
 				}
+				// Filter: if client has sessionID, only send matches or global messages.
+				// If no sessionID, send everything (main feed).
+				if sessionID != "" && i.SessionID != "" && i.SessionID != sessionID {
+					continue
+				}
+
 				if !sentIds[i.ID] {
 					if err := json.NewEncoder(w).Encode(i); err != nil {
 						return
 					}
 					flusher.Flush()
 				}
-			case i, ok := <-incoming:
+			case _, ok := <-incoming:
 				if !ok {
 					incoming = nil
 					continue
 				}
-				i.IsUser = false
-				saveInteraction(db, &i)
+				// Handled by the goroutine above
 			case <-ticker.C:
 				w.Write([]byte("{}\n"))
 				flusher.Flush()

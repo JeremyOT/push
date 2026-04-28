@@ -255,6 +255,22 @@ func TestHandleInteractions(t *testing.T) {
 		t.Error("Expected non-zero ID")
 	}
 
+	// Test POST with SessionID
+	interactionSession := Interaction{
+		Message:   "Session msg",
+		SessionID: "sess-123",
+	}
+	bodySess, _ := json.Marshal(interactionSession)
+	reqSess := httptest.NewRequest("POST", "/interactions", bytes.NewReader(bodySess))
+	wSess := httptest.NewRecorder()
+	handler(wSess, reqSess)
+
+	var savedSess Interaction
+	json.Unmarshal(wSess.Body.Bytes(), &savedSess)
+	if savedSess.SessionID != "sess-123" {
+		t.Errorf("Expected session_id sess-123, got %s", savedSess.SessionID)
+	}
+
 	// Test POST with Identifier (Insert)
 	interactionID := Interaction{
 		Identifier: "task-1",
@@ -414,11 +430,11 @@ func TestHandleInteractions(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&list); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if len(list) != 4 {
-		t.Errorf("Expected 4 interactions, got %d", len(list))
+	if len(list) != 5 {
+		t.Errorf("Expected 5 interactions, got %d", len(list))
 	}
-	if !list[2].Quiet {
-		t.Error("Expected last interaction to have quiet=true")
+	if !list[3].Quiet {
+		t.Errorf("Expected interaction at index 3 to have quiet=true, got quiet=%v (message: %s)", list[3].Quiet, list[3].Message)
 	}
 }
 
@@ -617,7 +633,7 @@ func TestRunCliClient(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Run client in background
-	go runCliClient(ctx, addr, "text", "", stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-456", "Test Session", "gemini", stdinReader, &stdout, &stderr)
 
 	// Give it a moment to connect
 	time.Sleep(200 * time.Millisecond)
@@ -666,7 +682,7 @@ func TestRunCliClientModes(t *testing.T) {
 	stdinReader, stdinWriter := io.Pipe()
 	var stdout, stderr bytes.Buffer
 
-	go runCliClient(ctx, addr, "json", "", stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "json", "", "", "", "", stdinReader, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond) // Wait for connection
 
 	// Send JSON interaction via stdin
@@ -693,7 +709,7 @@ func TestRunCliClientModes(t *testing.T) {
 	defer cancel2()
 	stdinReader2, stdinWriter2 := io.Pipe()
 	
-	go runCliClient(ctx2, addr, "jsonr", "", stdinReader2, &stdout, &stderr)
+	go runCliClient(ctx2, addr, "jsonr", "", "", "", "", stdinReader2, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond)
 	
 	fmt.Fprintln(stdinWriter2, "Normal Msg")
@@ -819,6 +835,79 @@ func (s *streamRecorder) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (s *streamRecorder) Flush() {
-	// No-op for testing
+func TestHandleServiceFiltering(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	handler := handleService(db)
+
+	// Client 1 with session filter
+	req1 := httptest.NewRequest("GET", "/service?session_id=sess-1", nil)
+	w1 := &streamRecorder{ResponseRecorder: httptest.NewRecorder(), data: make(chan string, 10)}
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	req1 = req1.WithContext(ctx1)
+	go handler(w1, req1)
+
+	// Client 2 with no session filter (main feed)
+	req2 := httptest.NewRequest("GET", "/service", nil)
+	w2 := &streamRecorder{ResponseRecorder: httptest.NewRecorder(), data: make(chan string, 10)}
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	req2 = req2.WithContext(ctx2)
+	go handler(w2, req2)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// 1. Global message (no session_id) - should reach both
+	globalInt := Interaction{ID: 100, Message: "Global Msg"}
+	broadcaster.Broadcast(globalInt)
+
+	// 2. Session 1 message - should reach both (main feed shows all)
+	sess1Int := Interaction{ID: 101, Message: "Sess 1 Msg", SessionID: "sess-1"}
+	broadcaster.Broadcast(sess1Int)
+
+	// 3. Session 2 message - should only reach main feed (w2)
+	sess2Int := Interaction{ID: 102, Message: "Sess 2 Msg", SessionID: "sess-2"}
+	broadcaster.Broadcast(sess2Int)
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Check w1 (sess-1 filter)
+	messages1 := drainStream(w1.data)
+	if !containsMessage(messages1, "Global Msg") || !containsMessage(messages1, "Sess 1 Msg") {
+		t.Errorf("Client 1 missing messages. Got: %v", messages1)
+	}
+	if containsMessage(messages1, "Sess 2 Msg") {
+		t.Error("Client 1 should not have received Sess 2 Msg")
+	}
+
+	// Check w2 (no filter)
+	messages2 := drainStream(w2.data)
+	if !containsMessage(messages2, "Global Msg") || !containsMessage(messages2, "Sess 1 Msg") || !containsMessage(messages2, "Sess 2 Msg") {
+		t.Errorf("Client 2 (Main Feed) missing messages. Got: %v", messages2)
+	}
+
+	cancel1()
+	cancel2()
+}
+
+func drainStream(ch chan string) []string {
+	var msgs []string
+	for {
+		select {
+		case m := <-ch:
+			msgs = append(msgs, m)
+		default:
+			return msgs
+		}
+	}
+}
+
+func containsMessage(msgs []string, text string) bool {
+	for _, m := range msgs {
+		if strings.Contains(m, text) {
+			return true
+		}
+	}
+	return false
 }

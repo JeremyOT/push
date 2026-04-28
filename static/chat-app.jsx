@@ -2,6 +2,7 @@
 // Adapts to phone (drawer sidebar) vs tablet (split layout) based on `mode` prop.
 
 function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo = false, config = { interactive: false } }) {
+  const [threads, setThreads] = React.useState(THREADS);
   const [activeId, setActiveId] = React.useState('t1');
   const [search, setSearch] = React.useState('');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -13,7 +14,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [typing, setTyping] = React.useState(null);
   const isPhone = mode === 'phone';
 
-  const thread = THREADS.find((t) => t.id === activeId) || THREADS[0];
+  const thread = threads.find((t) => t.id === activeId) || threads[0];
   const agent = AGENTS[thread.agent];
 
   const scrollRef = React.useRef(null);
@@ -37,6 +38,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       text: msg.detailed_message || msg.message,
       link: msg.link,
       title: msg.title,
+      sessionId: msg.session_id,
     };
 
     if (msg.is_user) {
@@ -101,15 +103,55 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     };
   };
 
+  const processMessage = (msg, setMessages, setThreads) => {
+    const mapped = mapMessage(msg);
+    
+    // Handle session registration
+    if (msg.title === 'session-register' && msg.session_id) {
+        setThreads(prev => {
+            if (prev.some(t => t.id === msg.session_id)) return prev;
+            return [...prev, {
+                id: msg.session_id,
+                agent: mapped.agent || 'remote',
+                title: msg.message.replace('Registered session: ', '') || 'CLI Agent',
+                status: mapped.status || 'done',
+                snippet: 'Active session',
+                updated: mapped.time,
+                unread: 0,
+                pinned: false,
+                sessionId: msg.session_id
+            }];
+        });
+        // We still might want to see the registration message in the main feed
+    }
+
+    setMessages(prev => {
+      if (msg.identifier) {
+        const idx = prev.findIndex(m => m.identifier === msg.identifier);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = mapped;
+          return next;
+        }
+      }
+      if (!prev.some(m => m.id === msg.id)) {
+        return [...prev, mapped];
+      }
+      return prev;
+    });
+
+    if (msg.id > newestId.current) {
+      newestId.current = msg.id;
+    }
+  };
+
   const fetchInitial = async () => {
     try {
       const response = await fetch('/interactions');
       if (!response.ok) throw new Error('Failed to fetch');
       const data = await response.json();
       if (data.length > 0) {
-        const mapped = data.map(mapMessage);
-        setMessages(mapped);
-        newestId.current = data[data.length - 1].id;
+        data.forEach(msg => processMessage(msg, setMessages, setThreads));
       }
     } catch (error) {
       console.error('Error fetching initial messages:', error);
@@ -140,24 +182,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (!line.trim()) continue;
             try {
               const msg = JSON.parse(line);
-              const mapped = mapMessage(msg);
-              setMessages(prev => {
-                if (msg.identifier) {
-                  const idx = prev.findIndex(m => m.identifier === msg.identifier);
-                  if (idx !== -1) {
-                    const next = [...prev];
-                    next[idx] = mapped;
-                    return next;
-                  }
-                }
-                if (!prev.some(m => m.id === msg.id)) {
-                  return [...prev, mapped];
-                }
-                return prev;
-              });
-              if (msg.id > newestId.current) {
-                newestId.current = msg.id;
-              }
+              processMessage(msg, setMessages, setThreads);
             } catch (e) {
               console.error('Error parsing stream line:', e);
             }
@@ -181,28 +206,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             const response = await fetch(`/interactions?after=${newestId.current}`);
             const data = await response.json();
             if (data.length > 0) {
-                const mapped = data.map(mapMessage);
-                setMessages(prev => {
-                    const next = [...prev];
-                    let changed = false;
-                    mapped.forEach(m => {
-                        if (m.identifier) {
-                            const idx = next.findIndex(existing => existing.identifier === m.identifier);
-                            if (idx !== -1) {
-                                next[idx] = m;
-                                changed = true;
-                                return;
-                            }
-                        }
-                        const exists = next.some(existing => existing.id === m.id);
-                        if (!exists) {
-                            next.push(m);
-                            changed = true;
-                        }
-                    });
-                    return changed ? next : prev;
-                });
-                newestId.current = data[data.length - 1].id;
+                data.forEach(msg => processMessage(msg, setMessages, setThreads));
             }
         } catch (e) {}
     }, 5000);
@@ -230,12 +234,16 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (!config.interactive) return;
     
     try {
+        const payload = { message: text, is_user: true };
+        if (thread.sessionId) {
+            payload.session_id = thread.sessionId;
+        }
         const response = await fetch('/interactions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ message: text, is_user: true })
+            body: JSON.stringify(payload)
         });
         if (!response.ok) throw new Error('Failed to send');
         
@@ -271,9 +279,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return <AgentBubble key={m.id} msg={m} theme={theme} />;
   };
 
+  const filteredMessages = messages.filter(m => {
+    if (thread.id === 't1') return true; // Main feed shows everything
+    return m.sessionId === thread.sessionId;
+  });
+
   const sidebar = (
     <Sidebar
-      theme={theme} threads={THREADS} activeId={activeId}
+      theme={theme} threads={threads} activeId={activeId}
       search={search} setSearch={setSearch}
       onSelect={(id) => { setActiveId(id); setDrawerOpen(false); }}
       onClose={isPhone ? () => setDrawerOpen(false) : null}
@@ -293,10 +306,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }}>
       {/* agent rail (tablet only, hidden in solo mode) */}
       {!isPhone && !solo && (
-        <AgentRail theme={theme} threads={THREADS} activeAgent={thread.agent}
+        <AgentRail theme={theme} threads={threads} activeAgent={thread.agent}
           icon={icon}
           onSelectAgent={(aid) => {
-            const t = THREADS.find((th) => th.agent === aid);
+            const t = threads.find((th) => th.agent === aid);
             if (t) setActiveId(t.id);
           }}
         />
@@ -354,7 +367,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
           display: 'flex', flexDirection: 'column', gap: 14,
         }}>
           <DateDivider theme={theme} label="Today" />
-          {messages.map(renderMessage)}
+          {filteredMessages.map(renderMessage)}
           {typing && (
             <TypingBubble agent={typing} theme={theme} />
           )}

@@ -22,6 +22,7 @@ def main():
     try:
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
+        session_id = data.get("session_id", "")
         prompt_response = data.get("prompt_response", "")
         
         message = f"{wd}: {prompt_response}"
@@ -32,6 +33,7 @@ def main():
             "title": title,
             "agent": "gemini",
             "status": "d",
+            "session_id": session_id,
             "link": "",
             "detailed_message": message,
             "quiet": False #True
