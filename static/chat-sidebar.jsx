@@ -71,7 +71,7 @@ function SidebarThreadRow({ thread, active, theme, onClick }) {
         }}>{thread.updated}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
-        <StatusPill status={thread.status} theme={theme} />
+        {thread.id !== 't1' && <StatusPill status={thread.status} theme={theme} />}
         <div style={{
           flex: 1, minWidth: 0,
           fontFamily: FONT_SANS, fontSize: 12, color: theme.fgMuted,
