@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Added `--yolo` flag to `gemini-agent` which passes `-y` to the underlying `gemini` CLI.
 - Fixed a bug in `gemini-agent` where the background `push` client would exit immediately due to incorrect terminal detection for redirected `stdin` (`/dev/null`).
 - Implemented robust terminal detection in `main.go` using `ioctl` (`TIOCGWINSZ`) to accurately distinguish between a real TTY and background/redirected input.
 - Updated `gemini-agent` to use the local `./push` binary and generic `gemini` commands for better portability.

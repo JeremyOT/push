@@ -3,6 +3,7 @@
 # Default session name is current directory
 SESSION_NAME=$(basename "$PWD")
 RESUME=false
+YOLO=false
 SESSION_NAME_OVERRIDE=""
 ADDITIONAL_ARGS=()
 
@@ -10,6 +11,7 @@ ADDITIONAL_ARGS=()
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --resume) RESUME=true; shift ;;
+        --yolo) YOLO=true; shift ;;
         *)
             if [ -z "$SESSION_NAME_OVERRIDE" ]; then
                 SESSION_NAME_OVERRIDE="$1"
@@ -21,6 +23,12 @@ while [[ "$#" -gt 0 ]]; do
             ;;
     esac
 done
+
+# Prepare gemini args
+GEMINI_ARGS=("${ADDITIONAL_ARGS[@]}")
+if [ "$YOLO" = true ]; then
+    GEMINI_ARGS=("-y" "${GEMINI_ARGS[@]}")
+fi
 
 # Determine Session ID
 if [ "$RESUME" = true ]; then
@@ -63,7 +71,7 @@ trap "kill $PUSH_PID 2>/dev/null" EXIT
 export GEMINI_SESSION_ID="$SESSION_ID"
 
 if [ "$RESUME" = true ]; then
-    gemini --resume latest "${ADDITIONAL_ARGS[@]}"
+    gemini --resume latest "${GEMINI_ARGS[@]}"
 else
-    gemini "${ADDITIONAL_ARGS[@]}"
+    gemini "${GEMINI_ARGS[@]}"
 fi
