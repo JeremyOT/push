@@ -2,14 +2,41 @@
 
 # Default session name is current directory
 SESSION_NAME=$(basename "$PWD")
+RESUME=false
+SESSION_NAME_OVERRIDE=""
+ADDITIONAL_ARGS=()
 
-# Optional user-submitted string override for session name
-if [ -n "$1" ]; then
-    SESSION_NAME="$1"
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --resume) RESUME=true; shift ;;
+        *)
+            if [ -z "$SESSION_NAME_OVERRIDE" ]; then
+                SESSION_NAME_OVERRIDE="$1"
+                SESSION_NAME="$1"
+            else
+                ADDITIONAL_ARGS+=("$1")
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Determine Session ID
+if [ "$RESUME" = true ]; then
+    # Get the latest session ID from the list
+    SESSION_ID=$(/opt/homebrew/bin/gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+    if [ -z "$SESSION_ID" ]; then
+        echo "Warning: No session found to resume. Generating new session ID."
+        SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+        RESUME=false
+    else
+        echo "Resuming session: $SESSION_ID"
+    fi
+else
+    # Generate a new session ID
+    SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 fi
-
-# Generate a new session ID
-SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
 
 # Get current tmux pane ID
 if [ -n "$TMUX" ]; then
@@ -35,4 +62,9 @@ trap "kill $PUSH_PID 2>/dev/null" EXIT
 # Start gemini-cli with the session ID
 # GEMINI_SESSION_ID environment variable is used to set the session ID
 export GEMINI_SESSION_ID="$SESSION_ID"
-gemini
+
+if [ "$RESUME" = true ]; then
+    /opt/homebrew/bin/gemini --resume latest "${ADDITIONAL_ARGS[@]}"
+else
+    /opt/homebrew/bin/gemini "${ADDITIONAL_ARGS[@]}"
+fi
