@@ -41,7 +41,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
-- Implemented per-agent filtering in the web UI using `session_id`. The main feed continues to show all messages, while specific agent threads filter by `session_id`.
+- Added automatic scroll-to-bottom when switching between threads or the main feed in the web UI.
+- Implemented per-agent filtering in the web UI using `session_id`.
+ The main feed continues to show all messages, while specific agent threads filter by `session_id`.
 - Added dynamic thread creation in the frontend; agents registered via the CLI now appear automatically in the sidebar.
 - Added `--session-id`, `--session-name`, and `--model` flags to the CLI service for better agent attribution and session-scoped interactions.
 - Updated `hooks/gemini/afteragent.py` and `hooks/gemini/aftermodel.py` to extract and include `session_id` from Gemini CLI event data.

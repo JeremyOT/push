@@ -216,7 +216,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, typing]);
+  }, [filteredMessages.length, typing, activeId]);
 
   // Cmd-K binding
   React.useEffect(() => {
