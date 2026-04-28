@@ -45,6 +45,7 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `static/chat-data.jsx` to include the `ready` status with the same green indicator as `done`.
 - Updated `static/chat-app.jsx` to map the backend `r` status code to the frontend `ready` status.
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
+- Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Fixed sidebar status display: the "ready" status now appears for worker threads, while all status indicators are hidden for the "Main Feed" thread.
 - Fixed top bar status display in `ChatHeader`: status indicators are now hidden for the "Main Feed" thread and dynamically update for worker threads.
 - Enhanced session status logic to automatically set the thread status to "working" when the last message in a session is a user message, assuming the agent is preparing a response.

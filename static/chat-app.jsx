@@ -342,15 +342,15 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return <AgentBubble key={m.id} msg={m} theme={theme} />;
   };
 
-  const filteredMessages = messages.filter(m => {
+  const filteredMessages = React.useMemo(() => messages.filter(m => {
     if (!thread || thread.id === 't1') return true; // Main feed shows everything
     return m.sessionId === thread.sessionId;
-  });
+  }), [messages, thread]);
 
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [filteredMessages.length, typing, activeId]);
+  }, [filteredMessages, typing, activeId]);
 
   // Cmd-K binding
   React.useEffect(() => {
