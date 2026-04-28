@@ -432,8 +432,13 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var isHistory bool
 
 			sessionID := r.URL.Query().Get("session_id")
+			latestPerSession := r.URL.Query().Get("latest_per_session") == "true"
 
-			if after := r.URL.Query().Get("after"); after != "" {
+			if latestPerSession {
+				// Fetch the latest interaction for each session_id
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY session_id) ORDER BY id ASC"
+				rows, err = db.Query(query)
+			} else if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
 				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id > ?"
 				args := []interface{}{after}

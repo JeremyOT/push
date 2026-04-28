@@ -1116,3 +1116,55 @@ func TestUserMessagePushSuppression(t *testing.T) {
 		t.Error("Expected is_user to be true in DB")
 	}
 }
+
+func TestHandleInteractionsLatestPerSession(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	handler := handleInteractions(db)
+
+	// 1. Insert messages for different sessions
+	// Session A
+	db.Exec("INSERT INTO interactions (message, session_id) VALUES (?, ?)", "Msg A1", "sess-a")
+	db.Exec("INSERT INTO interactions (message, session_id) VALUES (?, ?)", "Msg A2", "sess-a")
+	// Session B
+	db.Exec("INSERT INTO interactions (message, session_id) VALUES (?, ?)", "Msg B1", "sess-b")
+	// Main Feed (Empty session_id)
+	db.Exec("INSERT INTO interactions (message, session_id) VALUES (?, ?)", "Main 1", "")
+	db.Exec("INSERT INTO interactions (message, session_id) VALUES (?, ?)", "Main 2", "")
+
+	// 2. Fetch latest per session
+	req := httptest.NewRequest("GET", "/interactions?latest_per_session=true", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	var results []Interaction
+	if err := json.NewDecoder(w.Body).Decode(&results); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	// Should have 3 results: A2, B1, and Main 2
+	if len(results) != 3 {
+		t.Errorf("Expected 3 results, got %d", len(results))
+	}
+
+	messages := make(map[string]string)
+	for _, r := range results {
+		messages[r.SessionID] = r.Message
+	}
+
+	if messages["sess-a"] != "Msg A2" {
+		t.Errorf("Expected Msg A2 for sess-a, got %s", messages["sess-a"])
+	}
+	if messages["sess-b"] != "Msg B1" {
+		t.Errorf("Expected Msg B1 for sess-b, got %s", messages["sess-b"])
+	}
+	if messages[""] != "Main 2" {
+		t.Errorf("Expected Main 2 for empty session, got %s", messages[""])
+	}
+}

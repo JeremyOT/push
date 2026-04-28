@@ -52,6 +52,8 @@ go build -ldflags="-w -s" -o push main.go
 
 ## Recent Changes
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
+- Fixed stale sidebar message summaries after a restart: the web UI now fetches the latest interaction for every session upon initialization to ensure snippets and timestamps are accurate.
+- Enhanced `/interactions` endpoint with a `latest_per_session` parameter to support efficient sidebar initialization.
 - Improved agent list reliability: the web UI now proactively fetches registration metadata for unknown active sessions identified via heartbeats, and uses message ID tracking (`after` parameter) during stream reconnection to ensure no registration messages are missed.
 - Enhanced `/service` and `/interactions` endpoints with `after` (by ID) and `session_id` filtering for more robust client synchronization.
 - Changed the default state for agents from "done" to "ready" when no state is provided by the server.

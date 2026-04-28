@@ -265,6 +265,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const fetchInitial = async () => {
     try {
+      // 1. Fetch latest interaction for every session to populate sidebar accurately
+      const sessionResponse = await fetch('/interactions?latest_per_session=true');
+      if (sessionResponse.ok) {
+        const sessionData = await sessionResponse.json();
+        sessionData.forEach(msg => processMessage(msg, setMessages, setThreads, true));
+      }
+
+      // 2. Fetch recent interactions for the main feed
       const response = await fetch('/interactions');
       if (!response.ok) throw new Error('Failed to fetch');
       const data = await response.json();
