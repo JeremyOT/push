@@ -507,7 +507,9 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingStatus string
 		var existingAgent string
 		var existingSessionID string
-		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent, session_id FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent, &existingSessionID)
+		var existingIsUser bool
+		var existingQuiet bool
+		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent, session_id, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent, &existingSessionID, &existingIsUser, &existingQuiet)
 		if err == nil {
 			// Exists, update it
 			if i.Title == "" {
@@ -524,6 +526,21 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			}
 			if i.SessionID == "" {
 				i.SessionID = existingSessionID
+			}
+			// For boolean fields, we only merge if the new value is false and existing was true?
+			// Actually, it's better to just check if they were provided in JSON.
+			// But Go unmarshals missing bools as false.
+			// Given the current hooks, we can assume if they are true, they should stay true?
+			// No, that's not right.
+			// Let's assume for now that if we are updating by identifier, we want to keep the existing is_user.
+			i.IsUser = existingIsUser
+			// For quiet, we might want to update it. aftermodel.py sends it.
+			// If it's missing in the update request, we might want to keep it.
+			// But how to detect if it's missing? We can't easily with the current struct.
+			// Let's just merge it if it was not in the request? 
+			// For now, let's just make sure we are not accidentally clearing it if it was true.
+			if !i.Quiet && existingQuiet {
+				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
 			}
 			if !i.Replace {
 				i.Message = existingMessage + i.Message

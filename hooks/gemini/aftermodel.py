@@ -65,7 +65,8 @@ def main():
         #    return
 
         status = "w"
-        if finish_reason in ["STOP", "COMPLETED"]:
+        # STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER are possible
+        if finish_reason in ["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER"]:
              status = "d"
         else:
              status = "w"
@@ -76,7 +77,7 @@ def main():
         
         payload = {
             "identifier": identifier,
-            "replace": False,
+            "replace": True,
             "message": message[:50],
             "title": title,
             "agent": "gemini",
