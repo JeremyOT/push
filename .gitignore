@@ -3,3 +3,4 @@ push.sqlite
 *.swp
 output
 *.log
+deploy.sh
