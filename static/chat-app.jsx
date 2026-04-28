@@ -115,7 +115,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 id: msg.session_id,
                 agent: mapped.agent || 'remote',
                 title: msg.message.replace('Registered session: ', '') || 'CLI Agent',
-                status: mapped.status || 'done',
+                status: mapped.status || 'ready',
                 snippet: 'Active session',
                 updated: mapped.time,
                 unread: 0,

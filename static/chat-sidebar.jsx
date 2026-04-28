@@ -170,7 +170,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
           ))}
         </div>
         <div style={{ flex: 1, fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted, letterSpacing: 0.3 }}>
-          {rest.length} active · {rest.filter(t => t.status === 'awaiting').length} awaiting
+          {rest.length} active · {rest.filter(t => t.status === 'awaiting' || t.status === 'ready').length} awaiting
         </div>
       </div>
     </div>
