@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed a UI crash caused by a `ReferenceError` (temporal dead zone) when accessing `filteredMessages` before its initialization.
 - Added automatic scroll-to-bottom when switching between threads or the main feed in the web UI.
 - Implemented per-agent filtering in the web UI using `session_id`.
  The main feed continues to show all messages, while specific agent threads filter by `session_id`.

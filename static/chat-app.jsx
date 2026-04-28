@@ -213,23 +213,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return () => clearInterval(interval);
   }, []);
 
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [filteredMessages.length, typing, activeId]);
-
-  // Cmd-K binding
-  React.useEffect(() => {
-    const h = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen(true);
-      }
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, []);
-
   const handleSend = async (text) => {
     if (!config.interactive) return;
     
@@ -280,9 +263,26 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   };
 
   const filteredMessages = messages.filter(m => {
-    if (thread.id === 't1') return true; // Main feed shows everything
+    if (!thread || thread.id === 't1') return true; // Main feed shows everything
     return m.sessionId === thread.sessionId;
   });
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [filteredMessages.length, typing, activeId]);
+
+  // Cmd-K binding
+  React.useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
 
   const sidebar = (
     <Sidebar
