@@ -55,7 +55,7 @@ else
 fi
 
 # Start push client in the background
-./push --cli-service tmux \
+push --cli-service tmux \
     --session-id "$SESSION_ID" \
     --session-name "$SESSION_NAME" \
     --model gemini \
