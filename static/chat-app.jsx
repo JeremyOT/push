@@ -148,6 +148,31 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     if (msg.title === 'heartbeat' && msg.message !== undefined) {
         const activeIds = msg.message ? msg.message.split(',') : [];
+        
+        activeIds.forEach(id => {
+            if (!id || id === 't1') return;
+            setThreads(prev => {
+                if (prev.some(t => t.id === id)) return prev;
+                
+                // Trigger fetch outside of setThreads
+                setTimeout(() => fetchThreadInfo(id), 0);
+
+                return [...prev, {
+                    id: id,
+                    agent: 'remote',
+                    title: 'CLI Agent',
+                    status: 'ready',
+                    snippet: 'Active session',
+                    updated: mapped.time,
+                    unread: 0,
+                    pinned: false,
+                    sessionId: id,
+                    active: true,
+                    placeholder: true
+                }];
+            });
+        });
+
         setThreads(prev => {
             let changed = false;
             const updated = prev.map(t => {
@@ -224,6 +249,20 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     });
   };
 
+  const fetchThreadInfo = async (sessionId) => {
+    try {
+        const response = await fetch(`/interactions?session_id=${sessionId}&limit=20`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.length > 0) {
+            // Process in order so newest metadata wins
+            data.forEach(msg => processMessage(msg, setMessages, setThreads, true));
+        }
+    } catch (e) {
+        console.error('Error fetching thread info:', e);
+    }
+  };
+
   const fetchInitial = async () => {
     try {
       const response = await fetch('/interactions');
@@ -242,7 +281,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     
     const connect = async () => {
       try {
-        const response = await fetch(`/service?timestamp=${Date.now()}`);
+        const url = newestId.current > 0 
+            ? `/service?after=${newestId.current}`
+            : `/service?timestamp=${Date.now()}`;
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Stream failed');
         
         const reader = response.body.getReader();

@@ -51,6 +51,8 @@ go build -ldflags="-w -s" -o push main.go
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
 
 ## Recent Changes
+- Improved agent list reliability: the web UI now proactively fetches registration metadata for unknown active sessions identified via heartbeats, and uses message ID tracking (`after` parameter) during stream reconnection to ensure no registration messages are missed.
+- Enhanced `/service` and `/interactions` endpoints with `after` (by ID) and `session_id` filtering for more robust client synchronization.
 - Changed the default state for agents from "done" to "ready" when no state is provided by the server.
 - Updated the "ready" status label to "awaiting" and ensuring agents in the "ready" state are counted as "awaiting" in the sidebar footer.
 - Removed `/new thread` and `/search` commands from the command palette.

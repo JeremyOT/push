@@ -431,17 +431,42 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var err error
 			var isHistory bool
 
+			sessionID := r.URL.Query().Get("session_id")
+
 			if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id > ? ORDER BY id ASC", after)
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id > ?"
+				args := []interface{}{after}
+				if sessionID != "" {
+					query += " AND session_id = ?"
+					args = append(args, sessionID)
+				}
+				query += " ORDER BY id ASC"
+				rows, err = db.Query(query, args...)
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id < ? ORDER BY id DESC LIMIT ?", before, limit)
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id < ?"
+				args := []interface{}{before}
+				if sessionID != "" {
+					query += " AND session_id = ?"
+					args = append(args, sessionID)
+				}
+				query += " ORDER BY id DESC LIMIT ?"
+				args = append(args, limit)
+				rows, err = db.Query(query, args...)
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				rows, err = db.Query("SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions ORDER BY id DESC LIMIT ?", limit)
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions"
+				var args []interface{}
+				if sessionID != "" {
+					query += " WHERE session_id = ?"
+					args = append(args, sessionID)
+				}
+				query += " ORDER BY id DESC LIMIT ?"
+				args = append(args, limit)
+				rows, err = db.Query(query, args...)
 			}
 
 			if err != nil {
@@ -975,7 +1000,10 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		}()
 
 		startTime := time.Now().UTC()
-		if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
+		var startID int64
+		if afterStr := r.URL.Query().Get("after"); afterStr != "" {
+			fmt.Sscanf(afterStr, "%d", &startID)
+		} else if tsStr := r.URL.Query().Get("timestamp"); tsStr != "" {
 			if ts, err := time.Parse(time.RFC3339, tsStr); err == nil {
 				startTime = ts.UTC()
 			} else if ts, err := time.Parse("2006-01-02 15:04:05", tsStr); err == nil {
@@ -1000,8 +1028,15 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		flusher.Flush()
 
 		sentIds := make(map[int64]bool)
-		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE timestamp > ?"
-		args := []interface{}{startTime}
+		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE "
+		var args []interface{}
+		if startID > 0 {
+			query += "id > ?"
+			args = append(args, startID)
+		} else {
+			query += "timestamp > ?"
+			args = append(args, startTime)
+		}
 		if sessionID != "" {
 			query += " AND (session_id = ? OR session_id = '')"
 			args = append(args, sessionID)
