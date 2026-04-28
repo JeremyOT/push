@@ -424,16 +424,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       fontFamily: FONT_SANS,
       position: 'relative', overflow: 'hidden',
     }}>
-      {/* agent rail (tablet only, hidden in solo mode) */}
-      {!isPhone && !solo && (
-        <AgentRail theme={theme} threads={threads} activeAgent={thread.agent}
-          icon={icon}
-          onSelectAgent={(aid) => {
-            const t = threads.find((th) => th.agent === aid);
-            if (t) setActiveId(t.id);
-          }}
-        />
-      )}
       {/* sidebar — split on tablet, drawer on phone, hidden in solo */}
       {!isPhone && !solo && (
         <div style={{ width: 280, height: '100%', flexShrink: 0 }}>

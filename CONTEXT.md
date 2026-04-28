@@ -51,6 +51,7 @@ go build -ldflags="-w -s" -o push main.go
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
 
 ## Recent Changes
+- Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
 - Improved agent list reliability: the web UI now proactively fetches registration metadata for unknown active sessions identified via heartbeats, and uses message ID tracking (`after` parameter) during stream reconnection to ensure no registration messages are missed.
 - Enhanced `/service` and `/interactions` endpoints with `after` (by ID) and `session_id` filtering for more robust client synchronization.
 - Changed the default state for agents from "done" to "ready" when no state is provided by the server.
