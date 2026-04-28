@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Restricted text input in the web UI: the composer is now hidden on the "Main Feed" and only appears when an agent-specific thread is selected.
 - Fixed a UI crash caused by a `ReferenceError` (temporal dead zone) when accessing `filteredMessages` before its initialization.
 - Added automatic scroll-to-bottom when switching between threads or the main feed in the web UI.
 - Implemented per-agent filtering in the web UI using `session_id`.
