@@ -26,6 +26,14 @@ const AGENTS = {
     color: '#d97757',
     colorSoft: 'rgba(217,119,87,0.16)',
   },
+  tmux: {
+    id: 'tmux',
+    name: 'Tmux',
+    short: 'TX',
+    model: 'tmux-service',
+    color: '#10b981',
+    colorSoft: 'rgba(16,185,129,0.16)',
+  },
 };
 
 // status: 'done' | 'idle' | 'working' | 'error' | 'awaiting'

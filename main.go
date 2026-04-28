@@ -699,7 +699,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 			if clientID != "" {
 				exitMsg += fmt.Sprintf(" (Client ID: %s)", clientID)
 			}
-			sendMsg(exitMsg, "tmux-service", "", "")
+			sendMsg(exitMsg, title, "tmux", "")
 			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
 		}()
 	}
@@ -762,7 +762,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				if clientID != "" {
 					msg += fmt.Sprintf(" (Client ID: %s)", clientID)
 				}
-				sendMsg(msg, "tmux-service", "", "")
+				sendMsg(msg, title, "tmux", "")
 			}
 
 			dec := json.NewDecoder(resp.Body)
