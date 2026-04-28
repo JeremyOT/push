@@ -12,8 +12,8 @@ def main():
             return
             
         # Log input for debugging (matching original script behavior)
-        # with open(os.path.expanduser("~/aa.json"), "w") as f:
-        #    f.write(raw_input)
+        with open(os.path.expanduser("~/aa.json"), "w") as f:
+           f.write(raw_input)
             
         data = json.loads(raw_input)
     except Exception:
@@ -32,7 +32,7 @@ def main():
             "title": title,
             "link": "",
             "detailed_message": message,
-            "quiet": True
+            "quiet": False #True
         }
         
         url = "http://127.0.0.1:8089/interactions"

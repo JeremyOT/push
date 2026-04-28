@@ -4,6 +4,7 @@ import json
 import urllib.request
 import os
 import hashlib
+import time
 
 def main():
     try:
@@ -15,7 +16,6 @@ def main():
         data = json.loads(raw_input)
     except Exception:
         return
-
 
     try:
         cwd = data.get("cwd", "")
@@ -51,8 +51,7 @@ def main():
             # Try to get the full content from the candidate if text is short
             candidate_content = candidates[0].get("content", {})
             parts = candidate_content.get("parts", [])
-            if parts:
-                message_content = "".join([p if isinstance(p, str) else p.get("text", "") for p in parts])
+            message_content = "".join([p if isinstance(p, str) else p.get("text", "") for p in parts])
             
         # Finish reason
         finish_reason = "null"
@@ -60,8 +59,8 @@ def main():
             finish_reason = candidates[0].get("finishReason", "null")
 
         # Check exit conditions
-        if not finish_reason or short_response == "null":
-            return
+        #if not finish_reason or short_response == "null":
+        #    return
 
         notification_type = "Working"
         if finish_reason == "STOP" or finish_reason == "DONE" or finish_reason == "FINISH_REASON_UNSPECIFIED":
@@ -75,12 +74,12 @@ def main():
              notification_type = "Working"
 
         message = f"{wd}: {short_response}"
-        detailed_message = f"{wd}: {message_content}"
+        detailed_message = f"{message_content}"
         title = f"Gemini - {notification_type}"
         
         payload = {
             "identifier": identifier,
-            "replace": True,
+            "replace": False,
             "message": message[:50],
             "title": title,
             "link": "",
