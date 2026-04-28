@@ -663,17 +663,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 		}
 	}
 
-	if sessionID != "" {
-		// Sending registration message
-		sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
-	}
-
 	if mode == "tmux" {
-		msg := fmt.Sprintf("Now forwarding responses to %s", tmuxTarget)
-		if clientID != "" {
-			msg += fmt.Sprintf(" (Client ID: %s)", clientID)
-		}
-		sendMsg(msg, "tmux-service", "", "")
 		defer func() {
 			exitMsg := "No longer forwarding responses"
 			if clientID != "" {
@@ -732,6 +722,18 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				continue
 			}
 			backoff = 1 * time.Second // Reset backoff on success
+
+			// Re-register session and active services on successful connection
+			if sessionID != "" {
+				sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
+			}
+			if mode == "tmux" {
+				msg := fmt.Sprintf("Now forwarding responses to %s", tmuxTarget)
+				if clientID != "" {
+					msg += fmt.Sprintf(" (Client ID: %s)", clientID)
+				}
+				sendMsg(msg, "tmux-service", "", "")
+			}
 
 			dec := json.NewDecoder(resp.Body)
 			for {
