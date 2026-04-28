@@ -205,7 +205,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     ...t,
                     snippet: mapped.text || t.snippet,
                     updated: mapped.time,
-                    status: mapped.status || t.status,
+                    status: msg.is_user ? 'working' : (mapped.status || t.status),
                     // If we receive a message from a session in real-time, it must be active
                     active: isHistory ? t.active : true 
                 };
