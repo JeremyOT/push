@@ -89,6 +89,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     let status = null;
     if (msg.status === 'w') status = 'working';
     else if (msg.status === 'd') status = 'done';
+    else if (msg.status === 'r') status = 'ready';
     else if (msg.title) {
       // Fallback: Parse status from title
       if (msg.title.endsWith(' - Done')) status = 'done';

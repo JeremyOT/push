@@ -32,7 +32,7 @@ def main():
             "message": message[:50],
             "title": title,
             "agent": "gemini",
-            "status": "d",
+            "status": "r",
             "session_id": session_id,
             "link": "",
             "detailed_message": message,

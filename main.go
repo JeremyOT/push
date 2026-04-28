@@ -789,6 +789,8 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						status = " (Working)"
 					} else if i.Status == "d" {
 						status = " (Done)"
+					} else if i.Status == "r" {
+						status = " (Ready)"
 					}
 					fmt.Fprintf(stdout, "\r[%s] %s%s: %s\n> ", i.Timestamp.Local().Format("15:04"), author, status, i.Message)
 				}
