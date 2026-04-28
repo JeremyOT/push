@@ -46,6 +46,7 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `static/chat-app.jsx` to map the backend `r` status code to the frontend `ready` status.
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed sidebar status display: the "ready" status now appears for worker threads, while all status indicators are hidden for the "Main Feed" thread.
+- Fixed top bar status display in `ChatHeader`: status indicators are now hidden for the "Main Feed" thread and dynamically update for worker threads.
 - Fixed a bug where the thread status in the sidebar was not updating when a new message arrived.
 - Fixed stale active session list on reload by sending an immediate heartbeat with currently active session IDs upon connection to the `/service` stream.
 - Fixed sidebar timestamps and snippets not updating by ensuring `processMessage` updates the corresponding thread's state when a new message arrives.

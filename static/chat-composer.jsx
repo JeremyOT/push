@@ -33,8 +33,12 @@ function ChatHeader({ theme, thread, onMenu, isPhone, solo = false }) {
           whiteSpace: 'nowrap', overflow: 'hidden',
         }}>
           <span style={{ color: a.color, fontWeight: 600 }}>{a.name}</span>
-          <span>·</span>
-          <StatusPill status={thread.status} theme={theme} />
+          {thread.id !== 't1' && (
+            <>
+              <span>·</span>
+              <StatusPill status={thread.status} theme={theme} />
+            </>
+          )}
         </div>
       </div>
     </div>
