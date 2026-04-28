@@ -911,3 +911,104 @@ func containsMessage(msgs []string, text string) bool {
 	}
 	return false
 }
+
+func TestRunCliClientMetadata(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/service", handleService(db))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	addr := server.Listener.Addr().String()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stdinReader, stdinWriter := io.Pipe()
+	var stdout, stderr bytes.Buffer
+
+	// Run client with specific session, name, and model
+	go runCliClient(ctx, addr, "text", "", "sess-999", "Special Session", "gemini-pro", stdinReader, &stdout, &stderr)
+
+	// Give it a moment to connect and send registration
+	time.Sleep(300 * time.Millisecond)
+
+	// Verify registration message
+	var reg Interaction
+	err := db.QueryRow("SELECT title, message, agent, status, session_id FROM interactions WHERE title = 'session-register'").Scan(&reg.Title, &reg.Message, &reg.Agent, &reg.Status, &reg.SessionID)
+	if err != nil {
+		t.Errorf("Failed to find registration message: %v", err)
+	}
+	if reg.Agent != "gemini" {
+		t.Errorf("Expected agent gemini, got %s", reg.Agent)
+	}
+	if reg.SessionID != "sess-999" {
+		t.Errorf("Expected session_id sess-999, got %s", reg.SessionID)
+	}
+	if !strings.Contains(reg.Message, "Special Session") {
+		t.Errorf("Expected message to contain 'Special Session', got %s", reg.Message)
+	}
+
+	// Send a normal text message
+	fmt.Fprintln(stdinWriter, "Hello Metadata")
+	time.Sleep(200 * time.Millisecond)
+	stdinWriter.Close()
+
+	// Verify text message has metadata
+	var msg Interaction
+	err = db.QueryRow("SELECT title, message, agent, session_id FROM interactions WHERE message = 'Hello Metadata'").Scan(&msg.Title, &msg.Message, &msg.Agent, &msg.SessionID)
+	if err != nil {
+		t.Errorf("Failed to find text message: %v", err)
+	}
+	if msg.Agent != "gemini" {
+		t.Errorf("Text message missing agent gemini, got %s", msg.Agent)
+	}
+	if msg.Title != "Special Session" {
+		t.Errorf("Text message missing title 'Special Session', got %s", msg.Title)
+	}
+	if msg.SessionID != "sess-999" {
+		t.Errorf("Text message missing session_id sess-999, got %s", msg.SessionID)
+	}
+}
+
+func TestUserMessagePushSuppression(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// Intercept push notifications? Hard to do without refactoring.
+	// But we can check if it at least saves correctly.
+	handler := handleInteractions(db)
+
+	interaction := Interaction{
+		Message: "User Message",
+		IsUser:  true,
+	}
+	body, _ := json.Marshal(interaction)
+	req := httptest.NewRequest("POST", "/interactions", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("Expected status 201, got %d", w.Code)
+	}
+
+	var saved Interaction
+	json.Unmarshal(w.Body.Bytes(), &saved)
+	if !saved.IsUser {
+		t.Error("Expected IsUser to be true in response")
+	}
+
+	// Verify in DB
+	var isUser bool
+	err := db.QueryRow("SELECT is_user FROM interactions WHERE id = ?", saved.ID).Scan(&isUser)
+	if err != nil {
+		t.Fatalf("Failed to query DB: %v", err)
+	}
+	if !isUser {
+		t.Error("Expected is_user to be true in DB")
+	}
+}

@@ -24,7 +24,7 @@ def main():
         
         llm_request = data.get("llm_request")
         llm_response = data.get("llm_response", {})
-        short_response = llm_response.get("text") or 'null'
+        short_response = llm_response.get("text") or ''
 
         # Generate stable identifier from request
         identifier = ""
@@ -52,7 +52,8 @@ def main():
             # Try to get the full content from the candidate if text is short
             candidate_content = candidates[0].get("content", {})
             parts = candidate_content.get("parts", [])
-            message_content = "".join([p if isinstance(p, str) else p.get("text", "") for p in parts])
+            if parts:
+                message_content = "".join([p if isinstance(p, str) else p.get("text", "") for p in parts])
             
         # Finish reason
         finish_reason = "null"

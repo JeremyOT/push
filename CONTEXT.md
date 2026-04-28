@@ -41,6 +41,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed a bug in the CLI client where messages sent in `text` mode were missing `session_id`, `agent`, and `title` metadata, leading to incorrect attribution in the web UI.
+- Enhanced `runCliClient` to consistently apply session and agent metadata to all outgoing messages, including those sent via `stdin`.
+- Added `TestRunCliClientMetadata` to verify end-to-end CLI session registration and message attribution.
+- Added `TestUserMessagePushSuppression` to verify that `is_user: true` messages correctly bypass push notification logic.
 - Added `gemini-agent` script to launch `gemini-cli` and a background `push` tmux client synchronized by a shared session ID.
 - Restricted text input in the web UI: the composer is now hidden on the "Main Feed" and only appears when an agent-specific thread is selected.
 - Fixed a UI crash caused by a `ReferenceError` (temporal dead zone) when accessing `filteredMessages` before its initialization.

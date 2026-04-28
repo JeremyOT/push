@@ -606,6 +606,19 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 
 	needsPrompt := mode == "text" || mode == "" || mode == "jsonr"
 
+	title := sessionName
+	if title == "" {
+		title = "CLI Agent"
+	}
+	agent := "remote"
+	if model != "" {
+		if strings.Contains(strings.ToLower(model), "gemini") {
+			agent = "gemini"
+		} else if strings.Contains(strings.ToLower(model), "claude") {
+			agent = "claude"
+		}
+	}
+
 	sendMsg := func(text string, title string, agent string, status string) {
 		i := Interaction{Message: text, Title: title, SessionID: sessionID, Agent: agent, Status: status}
 		data, _ := json.Marshal(i)
@@ -619,19 +632,6 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 	}
 
 	if sessionID != "" {
-		title := sessionName
-		if title == "" {
-			title = "CLI Agent"
-		}
-		agent := "remote" // Default agent type for generic CLI
-		if model != "" {
-			// If we have a model, we might want to map it to a known agent type
-			if strings.Contains(strings.ToLower(model), "gemini") {
-				agent = "gemini"
-			} else if strings.Contains(strings.ToLower(model), "claude") {
-				agent = "claude"
-			}
-		}
 		// Sending registration message
 		sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
 	}
@@ -844,7 +844,11 @@ loop:
 					continue
 				}
 			} else {
-				i = Interaction{Message: text}
+				i = Interaction{Message: text, Agent: agent, Title: title}
+			}
+
+			if i.SessionID == "" {
+				i.SessionID = sessionID
 			}
 
 			data, _ := json.Marshal(i)

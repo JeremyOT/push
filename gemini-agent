@@ -35,4 +35,4 @@ trap "kill $PUSH_PID 2>/dev/null" EXIT
 # Start gemini-cli with the session ID
 # GEMINI_SESSION_ID environment variable is used to set the session ID
 export GEMINI_SESSION_ID="$SESSION_ID"
-/opt/homebrew/bin/gemini
+gemini

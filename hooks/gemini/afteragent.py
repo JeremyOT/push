@@ -12,8 +12,8 @@ def main():
             return
             
         # Log input for debugging (matching original script behavior)
-        with open(os.path.expanduser("~/aa.json"), "w") as f:
-           f.write(raw_input)
+        #with open(os.path.expanduser("~/aa.json"), "w") as f:
+        #   f.write(raw_input)
             
         data = json.loads(raw_input)
     except Exception:
@@ -25,7 +25,7 @@ def main():
         session_id = data.get("session_id", "")
         prompt_response = data.get("prompt_response", "")
         
-        message = f"{wd}: {prompt_response}"
+        message = f"{prompt_response}"
         title = wd if wd else "Gemini"
         
         payload = {
