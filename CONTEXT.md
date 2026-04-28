@@ -47,6 +47,9 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Updated `gemini-agent` script to prioritize using a local `./push` binary if available, falling back to the system `push` command otherwise.
+- Removed `/new thread` and `/search` commands from the command palette.
+- Streamlined the sidebar by removing the search box and "New task" button.
+- Enhanced the sidebar footer: agent icons are now interactive and select the corresponding thread when clicked.
 - Improved `aftermodel` hook to skip sending empty notifications (avoiding "prefix:"-only messages) and ensuring final status updates don't accidentally clear accumulated message content.
 - Improved session activity tracking: the CLI client now re-registers with the server immediately upon establishing a successful connection (including reconnections), ensuring active sessions are correctly displayed in the web UI even after a server restart.
 - Fixed a bug where message statuses and content were not properly updating inline when upserted via the `aftermodel` hook; set `replace: true` in the hook and improved backend field merging.

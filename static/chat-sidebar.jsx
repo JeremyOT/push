@@ -90,11 +90,8 @@ function SidebarThreadRow({ thread, active, theme, onClick }) {
   );
 }
 
-function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, search, setSearch, dark, setDark, icon = APP_ICON }) {
-  const filtered = threads.filter((t) =>
-    t.title.toLowerCase().includes(search.toLowerCase()) ||
-    t.snippet.toLowerCase().includes(search.toLowerCase())
-  );
+function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, dark, setDark, icon = APP_ICON }) {
+  const filtered = threads;
   const pinned = filtered.filter((t) => t.pinned);
   const rest = filtered.filter((t) => !t.pinned);
 
@@ -127,46 +124,6 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, s
         )}
       </div>
 
-      {/* search */}
-      <div style={{ padding: '0 14px 8px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '7px 10px', borderRadius: 8,
-          background: theme.panel2,
-          border: `1px solid ${theme.border}`,
-        }}>
-          <IconSearch size={14} style={{ color: theme.fgDim }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search threads"
-            style={{
-              all: 'unset', flex: 1, minWidth: 0,
-              fontFamily: FONT_SANS, fontSize: 13, color: theme.fg,
-            }}
-          />
-          <span style={{
-            fontFamily: FONT_MONO, fontSize: 10, color: theme.fgDim,
-            border: `1px solid ${theme.border}`, padding: '1px 5px', borderRadius: 4,
-          }}>⌘K</span>
-        </div>
-      </div>
-
-      {/* command palette button */}
-      <div style={{ padding: '0 14px 8px' }}>
-        <button onClick={onOpenPalette} style={{
-          all: 'unset', cursor: 'pointer', boxSizing: 'border-box',
-          width: '100%', padding: '8px 10px', borderRadius: 8,
-          background: theme.accent, color: theme.accentFg,
-          fontFamily: FONT_SANS, fontSize: 13, fontWeight: 500,
-          display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center',
-          boxShadow: `0 6px 14px ${theme.accent}33`,
-        }}>
-          <IconPlus size={14} />
-          New task
-        </button>
-      </div>
-
       {/* threads */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 16px' }}>
         {pinned.length > 0 && (
@@ -188,7 +145,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, s
             <div style={{
               padding: 16, textAlign: 'center',
               fontFamily: FONT_SANS, fontSize: 12.5, color: theme.fgDim,
-            }}>No threads match "{search}"</div>
+            }}>No active threads</div>
           )}
         </div>
       </div>
@@ -201,13 +158,19 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, s
       }}>
         <div style={{ display: 'flex', gap: -4 }}>
           {Object.values(AGENTS).map((a, i) => (
-            <div key={a.id} style={{ marginLeft: i === 0 ? 0 : -6 }}>
+            <button key={a.id} 
+              onClick={() => {
+                const t = threads.find((th) => th.agent === a.id);
+                if (t) onSelect(t.id);
+              }}
+              style={{ all: 'unset', cursor: 'pointer', marginLeft: i === 0 ? 0 : -6 }}
+            >
               <AgentMark agent={a.id} size={20} theme={theme} />
-            </div>
+            </button>
           ))}
         </div>
         <div style={{ flex: 1, fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted, letterSpacing: 0.3 }}>
-          2 agents · 1 awaiting
+          {rest.length} active · {rest.filter(t => t.status === 'awaiting').length} awaiting
         </div>
       </div>
     </div>

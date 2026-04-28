@@ -143,9 +143,6 @@ const PALETTE_ITEMS = [
   { id: 'p2', cmd: '/diff', label: 'Show diff', desc: 'Inline diff between current branch and main', icon: 'file' },
   { id: 'p3', cmd: '/explain', label: 'Explain code', desc: 'Walk through a file or selection', icon: 'sparkle' },
   { id: 'p4', cmd: '/test', label: 'Run tests', desc: 'Execute test suite and summarize failures', icon: 'check' },
-  { id: 'p5', cmd: '/new', label: 'New thread with Claude', desc: 'Start a fresh conversation', icon: 'plus' },
-  { id: 'p6', cmd: '/new gemini', label: 'New thread with Gemini', desc: 'Start a fresh conversation', icon: 'plus' },
-  { id: 'p7', cmd: '/search', label: 'Search across threads', desc: 'Find a message by content', icon: 'search' },
 ];
 
 function CommandPalette({ theme, open, onClose, onPick }) {
