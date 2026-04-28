@@ -24,6 +24,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/SherClockHolmes/webpush-go"
 	_ "github.com/mattn/go-sqlite3"
@@ -588,6 +589,18 @@ func sendMessage(address, message, title string) error {
 	return nil
 }
 
+func isTerminal(r io.Reader) bool {
+	if f, ok := r.(*os.File); ok {
+		var sz struct {
+			rows, cols, xpixel, ypixel uint16
+		}
+		_, _, err := syscall.Syscall(syscall.SYS_IOCTL,
+			f.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&sz)))
+		return err == 0
+	}
+	return false
+}
+
 func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, model string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
@@ -815,15 +828,11 @@ loop:
 			if !ok {
 				// Stdin closed (Ctrl-D)
 				if mode == "tmux" {
-					// Check if we are in a terminal
-					if fi, ok := stdin.(interface{ Stat() (os.FileInfo, error) }); ok {
-						if stat, err := fi.Stat(); err == nil {
-							if (stat.Mode() & os.ModeCharDevice) == 0 {
-								// Input is piped, not a terminal. Block indefinitely to keep receiving.
-								<-ctx.Done()
-								break loop
-							}
-						}
+					if !isTerminal(stdin) {
+						// Input is redirected or backgrounded, not a terminal.
+						// Block indefinitely to keep receiving and forwarding.
+						<-ctx.Done()
+						break loop
 					}
 				}
 				break loop

@@ -41,6 +41,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed a bug in `gemini-agent` where the background `push` client would exit immediately due to incorrect terminal detection for redirected `stdin` (`/dev/null`).
+- Implemented robust terminal detection in `main.go` using `ioctl` (`TIOCGWINSZ`) to accurately distinguish between a real TTY and background/redirected input.
+- Updated `gemini-agent` to use the local `./push` binary and generic `gemini` commands for better portability.
 - Fixed a bug in the CLI client where messages sent in `text` mode were missing `session_id`, `agent`, and `title` metadata, leading to incorrect attribution in the web UI.
 - Enhanced `runCliClient` to consistently apply session and agent metadata to all outgoing messages, including those sent via `stdin`.
 - Added `TestRunCliClientMetadata` to verify end-to-end CLI session registration and message attribution.
