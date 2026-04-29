@@ -41,6 +41,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Updated the "stop" button in the web UI to send an `Escape` key via the tmux client, allowing users to cancel agent tasks remotely.
+- Modified `runCliClient` in `main.go` to intercept user interactions with status `stop` and execute `tmux send-keys Escape`.
+- Enhanced `handleSend` in `static/chat-app.jsx` to support sending messages with a specific `status`.
+- Updated `mapMessage` to render `stop` status interactions as subtle status notes in the chat feed.
 - Fixed session tracking in `gemini-agent` for new sessions: implemented a "start-and-exit" strategy to establish a real session ID before starting the background `push` client and the main interactive session.
 - Implemented an animated "three dot" typing/working icon on the agent side of the chat.
 - Updated `static/chat-app.jsx` to derive the typing state from the thread status: the indicator shows whenever status is anything other than `ready` or `idle` (and not on the Main Feed).

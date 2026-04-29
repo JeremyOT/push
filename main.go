@@ -809,6 +809,18 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						}
 
 						// Forward messages from the web app (user) to tmux
+						// If status is "stop", send Escape key
+						if i.Status == "stop" {
+							cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Escape")
+							if err := cmd.Run(); err != nil {
+								fmt.Fprintf(stderr, "\rFailed to send Escape to tmux: %v (Target: %s)\n", err, tmuxTarget)
+							}
+							if needsPrompt {
+								fmt.Fprint(stdout, "> ")
+							}
+							continue
+						}
+
 						// Send the message
 						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {

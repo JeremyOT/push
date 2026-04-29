@@ -44,6 +44,15 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     };
 
     if (msg.is_user) {
+      if (msg.status === 'stop') {
+        return {
+          ...base,
+          kind: 'status',
+          agent: 'remote',
+          status: 'idle',
+          text: 'stopped the agent',
+        };
+      }
       return {
         ...base,
         kind: 'user',
@@ -381,13 +390,16 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return () => clearInterval(interval);
   }, []);
 
-  const handleSend = async (text) => {
+  const handleSend = async (text, status = null) => {
     if (!config.interactive) return;
     
     try {
         const payload = { message: text, is_user: true };
         if (thread.sessionId) {
             payload.session_id = thread.sessionId;
+        }
+        if (status) {
+            payload.status = status;
         }
         const response = await fetch('/interactions', {
             method: 'POST',
@@ -538,7 +550,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             onOpenPalette={() => setPaletteOpen(true)}
             agentColor={agent.color}
             isWorking={isTyping}
-            onStop={() => {}}
+            onStop={() => handleSend('', 'stop')}
           />
         )}
       </div>
