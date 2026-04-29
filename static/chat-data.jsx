@@ -56,6 +56,7 @@ const THREADS = [
     updated: 'Now',
     unread: 0,
     pinned: true,
+    lastMsgId: 0,
   },
 ];
 

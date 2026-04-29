@@ -130,7 +130,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 unread: 0,
                 pinned: false,
                 sessionId: msg.session_id,
-                active: !isHistory // Only mark active if real-time
+                active: !isHistory, // Only mark active if real-time
+                lastMsgId: msg.id
             }];
         });
     }
@@ -177,7 +178,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     pinned: false,
                     sessionId: id,
                     active: true,
-                    placeholder: true
+                    placeholder: true,
+                    lastMsgId: 0
                 }];
             });
         });
@@ -223,7 +225,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return prev;
     });
 
-    const isNewest = msg.id >= newestId.current;
     if (msg.id > newestId.current) {
       newestId.current = msg.id;
     }
@@ -234,10 +235,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         const next = prev.map(t => {
             // Update the specific session thread
             if (msg.session_id && t.id === msg.session_id) {
-                // For specific threads, we update if it's the newest globally
-                // or if we don't have a better check, we could check a per-thread lastId.
-                // For now, only update if it's at least as new as the latest globally seen.
-                if (!isNewest && !isHistory) return t;
+                if (msg.id < t.lastMsgId) return t;
 
                 changed = true;
                 return {
@@ -246,16 +244,19 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     updated: mapped.time,
                     status: msg.is_user ? 'working' : (mapped.status || t.status),
                     // If we receive a message from a session in real-time, it must be active
-                    active: isHistory ? t.active : true 
+                    active: isHistory ? t.active : true,
+                    lastMsgId: msg.id
                 };
             }
             // Update main feed snippet/time
-            if (t.id === 't1' && isNewest) {
+            if (t.id === 't1') {
+                if (msg.id < t.lastMsgId) return t;
                 changed = true;
                 return {
                     ...t,
                     snippet: (mapped.title ? mapped.title + ': ' : '') + (mapped.text || ''),
-                    updated: mapped.time
+                    updated: mapped.time,
+                    lastMsgId: msg.id
                 };
             }
             return t;

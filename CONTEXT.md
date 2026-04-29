@@ -51,6 +51,7 @@ go build -ldflags="-w -s" -o push main.go
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
 
 ## Recent Changes
+- Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.
 - Enhanced the sidebar footer: agent icons now only show for currently active or pinned agents, and each icon includes a status dot reflecting the most urgent state of its associated sessions.
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
 - Fixed a bug where push notifications from the `afteragent` hook were prefixed with multiple newlines by trimming the response text.
