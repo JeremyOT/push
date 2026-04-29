@@ -54,6 +54,7 @@ const THREADS = [
     status: 'done',
     snippet: 'Push notification system active.',
     updated: 'Now',
+    lastTimestamp: Date.now(),
     unread: 0,
     pinned: true,
     lastMsgId: 0,

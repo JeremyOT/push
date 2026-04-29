@@ -151,6 +151,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 status: mapped.status || 'ready',
                 snippet: 'Active session',
                 updated: mapped.time,
+                lastTimestamp: msg.timestamp,
                 unread: 0,
                 pinned: false,
                 sessionId: msg.session_id,
@@ -162,7 +163,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     if (msg.title === 'session-active' && msg.session_id) {
         setThreads(prev => {
-            return prev.map(t => t.id === msg.session_id ? { ...t, active: true } : t);
+            return prev.map(t => t.id === msg.session_id ? { ...t, active: true, lastTimestamp: msg.timestamp } : t);
         });
     }
 
@@ -171,12 +172,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             // Remove thread if it becomes inactive (unless it's pinned/main feed)
             const threadToRemove = prev.find(t => t.id === msg.session_id);
             if (threadToRemove && !threadToRemove.pinned) {
-                if (activeId === msg.session_id) {
-                    setActiveId('t1');
-                }
-                return prev.filter(t => t.id !== msg.session_id);
+                // We no longer remove it immediately, we let the sidebar filter by 24h
+                // But we mark it inactive.
             }
-            return prev.map(t => t.id === msg.session_id ? { ...t, active: false } : t);
+            return prev.map(t => t.id === msg.session_id ? { ...t, active: false, lastTimestamp: msg.timestamp } : t);
         });
     }
 
@@ -201,6 +200,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         status: 'ready',
                         snippet: 'Active session',
                         updated: mapped.time,
+                        lastTimestamp: Date.now(),
                         unread: 0,
                         pinned: false,
                         sessionId: id,
@@ -215,12 +215,13 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             next = next.map(t => {
                 if (activeIds.includes(t.id) && !t.active) {
                     changed = true;
-                    return { ...t, active: true };
+                    return { ...t, active: true, lastTimestamp: Date.now() };
                 }
                 return t;
             });
 
-            // 3. Prune inactive non-pinned threads
+            // 3. Prune inactive non-pinned threads (No longer pruning, let sidebar handle it)
+            /*
             const filtered = next.filter(t => {
                 if (t.pinned || t.id === 't1' || activeIds.includes(t.id)) {
                     return true;
@@ -231,8 +232,9 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 changed = true;
                 return false;
             });
+            */
 
-            return changed ? filtered : prev;
+            return changed ? next : prev;
         });
     }
 
@@ -266,10 +268,22 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 if (msg.id < t.lastMsgId) return t;
 
                 changed = true;
+                
+                // Derive title from most recent non-empty message title
+                // Filter out common system/status titles
+                let nextTitle = t.title;
+                const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service'];
+                if (msg.title && !sysTitles.includes(msg.title)) {
+                    // Strip status suffixes if present
+                    nextTitle = msg.title.replace(/ - (Done|Working|Awaiting)$/, '');
+                }
+
                 return {
                     ...t,
+                    title: nextTitle,
                     snippet: mapped.text || t.snippet,
                     updated: mapped.time,
+                    lastTimestamp: msg.timestamp,
                     status: msg.is_user ? 'working' : (mapped.status || t.status),
                     agent: mapped.agent || t.agent, // Allow agent to be updated if it was remote
                     // If we receive a message from a session in real-time, it must be active
@@ -285,6 +299,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     ...t,
                     snippet: (mapped.title ? mapped.title + ': ' : '') + (mapped.text || ''),
                     updated: mapped.time,
+                    lastTimestamp: msg.timestamp,
                     lastMsgId: msg.id
                 };
             }

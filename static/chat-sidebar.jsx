@@ -100,9 +100,16 @@ function SidebarThreadRow({ thread, active, theme, onClick }) {
 }
 
 function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, dark, setDark, icon = APP_ICON }) {
-  const filtered = threads;
-  const pinned = filtered.filter((t) => t.pinned);
-  const rest = filtered.filter((t) => !t.pinned);
+  const now = Date.now();
+  const oneDay = 24 * 60 * 60 * 1000;
+
+  const mainFeed = threads.find(t => t.id === 't1');
+  const activeThreads = threads.filter(t => t.id !== 't1' && t.active);
+  const recentThreads = threads.filter(t => {
+    if (t.id === 't1' || t.active) return false;
+    const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
+    return (now - ts) < oneDay;
+  });
 
   return (
     <div style={{
@@ -135,28 +142,40 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
 
       {/* threads */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 16px' }}>
-        {pinned.length > 0 && (
-          <>
-            <SectionLabel theme={theme}>Pinned</SectionLabel>
+        {mainFeed && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 12 }}>
-              {pinned.map((t) => (
-                <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
-              ))}
+                <SidebarThreadRow thread={mainFeed} active={mainFeed.id === activeId} theme={theme} onClick={() => onSelect(mainFeed.id)} />
             </div>
-          </>
         )}
-        <SectionLabel theme={theme}>Active</SectionLabel>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {rest.map((t) => (
-            <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
-          ))}
-          {rest.length === 0 && pinned.length === 0 && (
+
+        {activeThreads.length > 0 && (
+            <>
+                <SectionLabel theme={theme}>Active</SectionLabel>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 12 }}>
+                    {activeThreads.map((t) => (
+                        <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
+                    ))}
+                </div>
+            </>
+        )}
+
+        {recentThreads.length > 0 && (
+            <>
+                <SectionLabel theme={theme}>Recent</SectionLabel>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {recentThreads.map((t) => (
+                        <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
+                    ))}
+                </div>
+            </>
+        )}
+
+        {activeThreads.length === 0 && recentThreads.length === 0 && !mainFeed && (
             <div style={{
               padding: 16, textAlign: 'center',
               fontFamily: FONT_SANS, fontSize: 12.5, color: theme.fgDim,
-            }}>No active threads</div>
-          )}
-        </div>
+            }}>No threads</div>
+        )}
       </div>
 
       {/* footer / agent fleet */}
@@ -167,9 +186,9 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
       }}>
         <div style={{ display: 'flex', gap: -4 }}>
           {Object.values(AGENTS)
-            .filter(a => threads.some(t => t.agent === a.id && (t.pinned || t.active)))
+            .filter(a => threads.some(t => t.agent === a.id && (t.active || (t.id !== 't1' && (now - (typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp)) < oneDay))))
             .map((a, i) => {
-              const agentThreads = threads.filter(t => t.agent === a.id && (t.pinned || t.active));
+              const agentThreads = threads.filter(t => t.agent === a.id && (t.active || (t.id !== 't1' && (now - (typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp)) < oneDay)));
               let status = 'done';
               if (agentThreads.some(t => t.status === 'working')) status = 'working';
               else if (agentThreads.some(t => t.status === 'ready' || t.status === 'awaiting')) status = 'ready';
@@ -177,7 +196,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
               return (
                 <button key={a.id} 
                   onClick={() => {
-                    const t = threads.find((th) => th.agent === a.id);
+                    const t = agentThreads.find(th => th.active) || agentThreads[0];
                     if (t) onSelect(t.id);
                   }}
                   style={{ all: 'unset', cursor: 'pointer', marginLeft: i === 0 ? 0 : -6 }}
@@ -189,7 +208,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
           }
         </div>
         <div style={{ flex: 1, fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted, letterSpacing: 0.3 }}>
-          {rest.length} active · {rest.filter(t => t.status === 'awaiting' || t.status === 'ready').length} awaiting
+          {activeThreads.length} active · {activeThreads.filter(t => t.status === 'awaiting' || t.status === 'ready').length} awaiting
         </div>
       </div>
     </div>

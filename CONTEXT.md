@@ -41,6 +41,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Refactored the sidebar to improve flexibility: removed the "Pinned" header, and implemented "Active" (connected) and "Recent" (last 24h) sections.
+- Updated `static/chat-app.jsx` to dynamically update thread titles based on the most recent non-system message title (e.g., agent or directory name).
+- Enhanced thread state to track raw timestamps for accurate 24-hour filtering in the sidebar.
+- Ensured messages without a session ID only appear in the Main Feed and do not create or update worker threads.
 - Added brief toast notifications ("Copied to clipboard") that appear when a message is copied via double-tap.
 - Implemented "double-tap to copy" functionality for all message bubbles and status notes in the web UI.
 - Removed the "stop" button functionality and enabled sending messages at any time, even while the agent is working.
