@@ -32,8 +32,9 @@ function MessageMeta({ theme, agent, status, time, align = 'left' }) {
 }
 
 function UserBubble({ msg, theme }) {
+  const copy = () => navigator.clipboard.writeText(msg.text);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', maxWidth: '85%', marginLeft: 'auto' }}>
+    <div onDoubleClick={copy} style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', maxWidth: '85%', marginLeft: 'auto', cursor: 'pointer' }}>
       <div style={{
         background: theme.user, color: theme.userFg,
         padding: '10px 14px',
@@ -52,8 +53,9 @@ function UserBubble({ msg, theme }) {
 
 function AgentBubble({ msg, theme }) {
   const a = AGENTS[msg.agent];
+  const copy = () => navigator.clipboard.writeText(msg.text);
   return (
-    <div style={{ display: 'flex', gap: 10, maxWidth: '92%' }}>
+    <div onDoubleClick={copy} style={{ display: 'flex', gap: 10, maxWidth: '92%', cursor: 'pointer' }}>
       <AgentMark agent={msg.agent} size={26} theme={theme} />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <MessageMeta theme={theme} agent={msg.agent} status={msg.status} time={msg.time} />
@@ -98,16 +100,18 @@ function renderInline(text, theme) {
 function StatusNote({ msg, theme }) {
   const a = AGENTS[msg.agent];
   const s = STATUS[msg.status];
+  const copy = () => navigator.clipboard.writeText(msg.text);
   // Strip leading agent-name from text so we don't repeat it.
   const cleaned = (msg.text || '').replace(new RegExp('^' + a.name + ' ', 'i'), '');
   return (
-    <div style={{
+    <div onDoubleClick={copy} style={{
       display: 'inline-flex', alignItems: 'center', gap: 8,
       padding: '5px 12px', alignSelf: 'center', maxWidth: '90%',
       fontFamily: FONT_MONO, fontSize: 11, color: theme.fgMuted,
       background: theme.panel2, border: `1px solid ${theme.border}`,
       borderRadius: 999, whiteSpace: 'nowrap',
       overflow: 'hidden', textOverflow: 'ellipsis',
+      cursor: 'pointer',
     }}>
       <IconDot size={6} color={s.dot} />
       <span style={{ color: a.color, fontWeight: 600 }}>{a.name}</span>
