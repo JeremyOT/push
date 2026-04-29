@@ -10,11 +10,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [expandedTools, setExpandedTools] = React.useState({});
   const [decisions, setDecisions] = React.useState({});
   const [messages, setMessages] = React.useState([]);
-  const [typing, setTyping] = React.useState(null);
   const isPhone = mode === 'phone';
 
   const thread = threads.find((t) => t.id === activeId) || threads[0];
   const agent = AGENTS[thread.agent];
+
+  // Typing indicator derived from thread status
+  const isTyping = thread.id !== 't1' && thread.status !== 'ready' && thread.status !== 'idle';
+  const typingAgent = isTyping ? thread.agent : null;
 
   const scrollRef = React.useRef(null);
   const newestId = React.useRef(0);
@@ -118,12 +121,27 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     // Handle session registration and activity
     if (msg.title === 'session-register' && msg.session_id) {
         setThreads(prev => {
-            const exists = prev.some(t => t.id === msg.session_id);
-            if (exists) return prev;
+            const idx = prev.findIndex(t => t.id === msg.session_id);
+            const title = msg.message.replace('Registered session: ', '') || 'CLI Agent';
+            const agent = mapped.agent || 'remote';
+            
+            if (idx !== -1) {
+                // Update existing thread/placeholder
+                const next = [...prev];
+                next[idx] = {
+                    ...next[idx],
+                    agent,
+                    title,
+                    placeholder: false,
+                    active: isHistory ? next[idx].active : true
+                };
+                return next;
+            }
+
             return [...prev, {
                 id: msg.session_id,
-                agent: mapped.agent || 'remote',
-                title: msg.message.replace('Registered session: ', '') || 'CLI Agent',
+                agent,
+                title,
                 status: mapped.status || 'ready',
                 snippet: 'Active session',
                 updated: mapped.time,
@@ -159,34 +177,36 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (msg.title === 'heartbeat' && msg.message !== undefined) {
         const activeIds = msg.message ? msg.message.split(',') : [];
         
-        activeIds.forEach(id => {
-            if (!id || id === 't1') return;
-            setThreads(prev => {
-                if (prev.some(t => t.id === id)) return prev;
-                
-                // Trigger fetch outside of setThreads
-                setTimeout(() => fetchThreadInfo(id), 0);
-
-                return [...prev, {
-                    id: id,
-                    agent: 'remote',
-                    title: 'CLI Agent',
-                    status: 'ready',
-                    snippet: 'Active session',
-                    updated: mapped.time,
-                    unread: 0,
-                    pinned: false,
-                    sessionId: id,
-                    active: true,
-                    placeholder: true,
-                    lastMsgId: 0
-                }];
-            });
-        });
-
         setThreads(prev => {
+            let next = [...prev];
             let changed = false;
-            const updated = prev.map(t => {
+
+            // 1. Create placeholders for new active IDs
+            activeIds.forEach(id => {
+                if (!id || id === 't1') return;
+                if (!next.some(t => t.id === id)) {
+                    changed = true;
+                    // Trigger fetch outside of this update
+                    setTimeout(() => fetchThreadInfo(id), 0);
+                    next.push({
+                        id: id,
+                        agent: 'remote',
+                        title: 'CLI Agent',
+                        status: 'ready',
+                        snippet: 'Active session',
+                        updated: mapped.time,
+                        unread: 0,
+                        pinned: false,
+                        sessionId: id,
+                        active: true,
+                        placeholder: true,
+                        lastMsgId: 0
+                    });
+                }
+            });
+
+            // 2. Update active status for known threads
+            next = next.map(t => {
                 if (activeIds.includes(t.id) && !t.active) {
                     changed = true;
                     return { ...t, active: true };
@@ -194,7 +214,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 return t;
             });
 
-            const filtered = updated.filter(t => {
+            // 3. Prune inactive non-pinned threads
+            const filtered = next.filter(t => {
                 if (t.pinned || t.id === 't1' || activeIds.includes(t.id)) {
                     return true;
                 }
@@ -204,6 +225,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 changed = true;
                 return false;
             });
+
             return changed ? filtered : prev;
         });
     }
@@ -243,6 +265,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     snippet: mapped.text || t.snippet,
                     updated: mapped.time,
                     status: msg.is_user ? 'working' : (mapped.status || t.status),
+                    agent: mapped.agent || t.agent, // Allow agent to be updated if it was remote
                     // If we receive a message from a session in real-time, it must be active
                     active: isHistory ? t.active : true,
                     lastMsgId: msg.id
@@ -415,7 +438,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   React.useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [filteredMessages, typing, activeId]);
+  }, [filteredMessages, isTyping, activeId]);
 
   // Cmd-K binding
   React.useEffect(() => {
@@ -502,8 +525,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         }}>
           <DateDivider theme={theme} label="Today" />
           {filteredMessages.map(renderMessage)}
-          {typing && (
-            <TypingBubble agent={typing} theme={theme} />
+          {isTyping && (
+            <TypingBubble agent={typingAgent} theme={theme} />
           )}
         </div>
         {config.interactive && thread.id !== 't1' && (
@@ -514,8 +537,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             onSend={handleSend}
             onOpenPalette={() => setPaletteOpen(true)}
             agentColor={agent.color}
-            isWorking={!!typing}
-            onStop={() => setTyping(null)}
+            isWorking={isTyping}
+            onStop={() => {}}
           />
         )}
       </div>

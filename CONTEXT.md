@@ -41,6 +41,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented an animated "three dot" typing/working icon on the agent side of the chat.
+- Updated `static/chat-app.jsx` to derive the typing state from the thread status: the indicator shows whenever status is anything other than `ready` or `idle` (and not on the Main Feed).
+- Refactored `PushChat` to remove the manual `typing` state in favor of derived `isTyping` and `typingAgent`.
+- Updated `Composer` to use the derived `isTyping` state for its stop button visibility.
 - Added a new "ready" status (mapped to code `r`) used exclusively by the `afteragent` hook to indicate task completion.
 - Updated `static/chat-data.jsx` to include the `ready` status with the same green indicator as `done`.
 - Updated `static/chat-app.jsx` to map the backend `r` status code to the frontend `ready` status.
