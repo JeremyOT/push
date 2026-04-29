@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed session tracking in `gemini-agent` for new sessions: implemented a "start-and-exit" strategy to establish a real session ID before starting the background `push` client and the main interactive session.
 - Implemented an animated "three dot" typing/working icon on the agent side of the chat.
 - Updated `static/chat-app.jsx` to derive the typing state from the thread status: the indicator shows whenever status is anything other than `ready` or `idle` (and not on the Main Feed).
 - Refactored `PushChat` to remove the manual `typing` state in favor of derived `isTyping` and `typingAgent`.

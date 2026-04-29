@@ -35,15 +35,20 @@ if [ "$RESUME" = true ]; then
     # Get the latest session ID from the list
     SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
     if [ -z "$SESSION_ID" ]; then
-        echo "Warning: No session found to resume. Generating new session ID."
-        SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+        echo "Warning: No session found to resume. Initializing new session..."
         RESUME=false
     else
         echo "Resuming session: $SESSION_ID"
     fi
-else
-    # Generate a new session ID
-    SESSION_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
+fi
+
+if [ "$RESUME" = false ]; then
+    echo "Initializing new session..."
+    # Start and exit immediately to create the session
+    # We use --skip-trust to avoid interactive prompts
+    echo "exit" | gemini --skip-trust > /dev/null 2>&1
+    SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+    echo "Started session: $SESSION_ID"
 fi
 
 # Get current tmux pane ID
@@ -71,12 +76,5 @@ PUSH_PID=$!
 # Hook to terminate push client when gemini-cli exits
 trap "kill $PUSH_PID 2>/dev/null" EXIT
 
-# Start gemini-cli with the session ID
-# GEMINI_SESSION_ID environment variable is used to set the session ID
-export GEMINI_SESSION_ID="$SESSION_ID"
-
-if [ "$RESUME" = true ]; then
-    gemini --resume latest "${GEMINI_ARGS[@]}"
-else
-    gemini "${GEMINI_ARGS[@]}"
-fi
+# Start gemini-cli by resuming the established session
+gemini --resume latest "${GEMINI_ARGS[@]}"
