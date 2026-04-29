@@ -10,7 +10,13 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [expandedTools, setExpandedTools] = React.useState({});
   const [decisions, setDecisions] = React.useState({});
   const [messages, setMessages] = React.useState([]);
+  const [toast, setToast] = React.useState(null);
   const isPhone = mode === 'phone';
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2000);
+  };
 
   const thread = threads.find((t) => t.id === activeId) || threads[0];
   const agent = AGENTS[thread.agent];
@@ -415,8 +421,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   };
 
   const renderMessage = (m) => {
-    if (m.kind === 'user') return <UserBubble key={m.id} msg={m} theme={theme} />;
-    if (m.kind === 'status') return <StatusNote key={m.id} msg={m} theme={theme} />;
+    if (m.kind === 'user') return <UserBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
+    if (m.kind === 'status') return <StatusNote key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
     if (m.kind === 'tool') return (
       <ToolBlock key={m.id} msg={m} theme={theme}
         expanded={!!expandedTools[m.id]}
@@ -427,7 +433,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         decision={decisions[m.id]}
         onDecide={(d) => handleDecide(m.id, d)} />
     );
-    return <AgentBubble key={m.id} msg={m} theme={theme} />;
+    return <AgentBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
   };
 
   const filteredMessages = React.useMemo(() => messages.filter(m => {
@@ -547,6 +553,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         onClose={() => setPaletteOpen(false)}
         onPick={(item) => setComposerValue(item.cmd + ' ')}
       />
+
+      {toast && (
+        <Toast message={toast} theme={theme} />
+      )}
     </div>
   );
 }
@@ -560,6 +570,21 @@ function DateDivider({ theme, label }) {
       <span style={{
         fontFamily: FONT_MONO, fontSize: 11, color: theme.fgDim,
       }}>{label}</span>
+    </div>
+  );
+}
+
+function Toast({ message, theme }) {
+  return (
+    <div style={{
+      position: 'absolute', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+      background: theme.fg, color: theme.bg,
+      padding: '8px 16px', borderRadius: 20,
+      fontSize: 12, fontWeight: 500, fontFamily: FONT_SANS,
+      zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+      animation: 'pushToast 0.2s ease-out',
+    }}>
+      {message}
     </div>
   );
 }

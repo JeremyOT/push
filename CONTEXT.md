@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Added brief toast notifications ("Copied to clipboard") that appear when a message is copied via double-tap.
 - Implemented "double-tap to copy" functionality for all message bubbles and status notes in the web UI.
 - Removed the "stop" button functionality and enabled sending messages at any time, even while the agent is working.
 - Fixed session tracking in `gemini-agent` for new sessions: implemented a "start-and-exit" strategy to establish a real session ID before starting the background `push` client and the main interactive session.
