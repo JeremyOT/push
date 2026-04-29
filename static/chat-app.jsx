@@ -38,6 +38,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   };
 
   const mapMessage = (msg) => {
+    const sid = msg.session_id ? String(msg.session_id).trim() : '';
     const base = {
       id: msg.id,
       identifier: msg.identifier,
@@ -46,7 +47,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       text: msg.detailed_message || msg.message,
       link: msg.link,
       title: msg.title,
-      sessionId: msg.session_id,
+      sessionId: sid,
     };
 
     if (msg.is_user) {
@@ -123,17 +124,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const processMessage = (msg, setMessages, setThreads, isHistory = false) => {
     const mapped = mapMessage(msg);
+    const sid = mapped.sessionId;
     const msgTs = msg.timestamp ? (typeof msg.timestamp === 'string' ? new Date(msg.timestamp).getTime() : msg.timestamp) : Date.now();
     
     // Handle heartbeats separately as they don't add to the message list
     if (msg.title === 'heartbeat' && msg.message !== undefined) {
-        const activeIds = msg.message ? msg.message.split(',') : [];
+        const activeIds = (msg.message ? msg.message.split(',') : []).map(id => id.trim()).filter(id => id && id !== 't1');
         setThreads(prev => {
             let next = [...prev];
             let changed = false;
 
             activeIds.forEach(id => {
-                if (!id || id === 't1') return;
                 const idx = next.findIndex(t => t.id === id);
                 if (idx === -1) {
                     changed = true;
@@ -200,8 +201,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         const next = [...prev];
 
         // 1. Update/Create session-specific thread
-        if (msg.session_id && msg.session_id !== 't1') {
-            const idx = next.findIndex(t => t.id === msg.session_id);
+        if (sid && sid !== 't1' && sid !== 'undefined' && sid !== 'null') {
+            const idx = next.findIndex(t => t.id === sid);
             const agent = mapped.agent || 'remote';
             const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service'];
             
@@ -223,11 +224,11 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
                     next[idx] = {
                         ...t,
-                        title: title || t.title,
+                        title: (title || t.title).trim(),
                         agent: agent !== 'remote' ? agent : t.agent,
                         snippet: mapped.text || t.snippet,
                         updated: mapped.time,
-                        lastTimestamp: msgTs,
+                        lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
                         status: msg.is_user ? 'working' : (mapped.status || t.status),
                         active: nextActive,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
@@ -237,16 +238,16 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             } else {
                 changed = true;
                 next.push({
-                    id: msg.session_id,
+                    id: sid,
                     agent,
-                    title: title || 'CLI Agent',
+                    title: (title || 'CLI Agent').trim(),
                     status: mapped.status || 'ready',
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
-                    lastTimestamp: msgTs,
+                    lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
                     unread: 0,
                     pinned: false,
-                    sessionId: msg.session_id,
+                    sessionId: sid,
                     active: msg.title === 'session-active' || (!isHistory && msg.title !== 'session-inactive'),
                     lastMsgId: msg.id > 0 ? msg.id : 0,
                     placeholder: false
@@ -264,7 +265,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     ...t1,
                     snippet: (mapped.title ? mapped.title + ': ' : '') + (mapped.text || ''),
                     updated: mapped.time,
-                    lastTimestamp: msgTs,
+                    lastTimestamp: isNaN(msgTs) ? t1.lastTimestamp : msgTs,
                     lastMsgId: msg.id
                 };
             }
