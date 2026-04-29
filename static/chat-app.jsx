@@ -550,7 +550,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             <TypingBubble agent={typingAgent} theme={theme} />
           )}
         </div>
-        {config.interactive && thread.id !== 't1' && (
+        {config.interactive && thread.id !== 't1' && thread.active && (
           <Composer
             theme={theme}
             value={composerValue}
