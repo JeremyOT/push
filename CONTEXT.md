@@ -51,6 +51,7 @@ go build -ldflags="-w -s" -o push main.go
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
 
 ## Recent Changes
+- Enhanced the sidebar footer: agent icons now only show for currently active or pinned agents, and each icon includes a status dot reflecting the most urgent state of its associated sessions.
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
 - Fixed a bug where push notifications from the `afteragent` hook were prefixed with multiple newlines by trimming the response text.
 - Updated `README.md` to include detailed instructions on project deployment via `deploy.sh` and 2-way communication using the `gemini-agent` script.

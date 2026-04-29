@@ -16,9 +16,10 @@ function StatusPill({ status, theme, mono = true }) {
   );
 }
 
-function AgentMark({ agent, size = 22, theme, ring = false }) {
+function AgentMark({ agent, size = 22, theme, ring = false, status = null }) {
   const a = AGENTS[agent];
   if (!a) return null;
+  const s = status ? STATUS[status] : null;
   return (
     <div style={{
       width: size, height: size, borderRadius: 6,
@@ -29,8 +30,16 @@ function AgentMark({ agent, size = 22, theme, ring = false }) {
       fontFamily: FONT_MONO, fontSize: Math.round(size * 0.42), fontWeight: 600,
       flexShrink: 0,
       boxShadow: ring ? `0 0 0 3px ${a.color}22` : 'none',
+      position: 'relative',
     }}>
       {a.short}
+      {s && (
+        <div style={{
+          position: 'absolute', bottom: -2, right: -2,
+          width: 8, height: 8, borderRadius: 99,
+          background: s.dot, border: `2px solid ${theme.panel}`,
+        }} />
+      )}
     </div>
   );
 }
@@ -157,17 +166,27 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
         <div style={{ display: 'flex', gap: -4 }}>
-          {Object.values(AGENTS).map((a, i) => (
-            <button key={a.id} 
-              onClick={() => {
-                const t = threads.find((th) => th.agent === a.id);
-                if (t) onSelect(t.id);
-              }}
-              style={{ all: 'unset', cursor: 'pointer', marginLeft: i === 0 ? 0 : -6 }}
-            >
-              <AgentMark agent={a.id} size={20} theme={theme} />
-            </button>
-          ))}
+          {Object.values(AGENTS)
+            .filter(a => threads.some(t => t.agent === a.id && (t.pinned || t.active)))
+            .map((a, i) => {
+              const agentThreads = threads.filter(t => t.agent === a.id && (t.pinned || t.active));
+              let status = 'done';
+              if (agentThreads.some(t => t.status === 'working')) status = 'working';
+              else if (agentThreads.some(t => t.status === 'ready' || t.status === 'awaiting')) status = 'ready';
+
+              return (
+                <button key={a.id} 
+                  onClick={() => {
+                    const t = threads.find((th) => th.agent === a.id);
+                    if (t) onSelect(t.id);
+                  }}
+                  style={{ all: 'unset', cursor: 'pointer', marginLeft: i === 0 ? 0 : -6 }}
+                >
+                  <AgentMark agent={a.id} size={20} theme={theme} status={status} />
+                </button>
+              );
+            })
+          }
         </div>
         <div style={{ flex: 1, fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted, letterSpacing: 0.3 }}>
           {rest.length} active · {rest.filter(t => t.status === 'awaiting' || t.status === 'ready').length} awaiting
