@@ -123,75 +123,20 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const processMessage = (msg, setMessages, setThreads, isHistory = false) => {
     const mapped = mapMessage(msg);
+    const msgTs = msg.timestamp ? (typeof msg.timestamp === 'string' ? new Date(msg.timestamp).getTime() : msg.timestamp) : Date.now();
     
-    // Handle session registration and activity
-    if (msg.title === 'session-register' && msg.session_id) {
-        setThreads(prev => {
-            const idx = prev.findIndex(t => t.id === msg.session_id);
-            const title = msg.message.replace('Registered session: ', '') || 'CLI Agent';
-            const agent = mapped.agent || 'remote';
-            
-            if (idx !== -1) {
-                // Update existing thread/placeholder
-                const next = [...prev];
-                next[idx] = {
-                    ...next[idx],
-                    agent,
-                    title,
-                    placeholder: false,
-                    active: isHistory ? next[idx].active : true
-                };
-                return next;
-            }
-
-            return [...prev, {
-                id: msg.session_id,
-                agent,
-                title,
-                status: mapped.status || 'ready',
-                snippet: 'Active session',
-                updated: mapped.time,
-                lastTimestamp: msg.timestamp,
-                unread: 0,
-                pinned: false,
-                sessionId: msg.session_id,
-                active: !isHistory, // Only mark active if real-time
-                lastMsgId: msg.id
-            }];
-        });
-    }
-
-    if (msg.title === 'session-active' && msg.session_id) {
-        setThreads(prev => {
-            return prev.map(t => t.id === msg.session_id ? { ...t, active: true, lastTimestamp: msg.timestamp } : t);
-        });
-    }
-
-    if (msg.title === 'session-inactive' && msg.session_id) {
-        setThreads(prev => {
-            // Remove thread if it becomes inactive (unless it's pinned/main feed)
-            const threadToRemove = prev.find(t => t.id === msg.session_id);
-            if (threadToRemove && !threadToRemove.pinned) {
-                // We no longer remove it immediately, we let the sidebar filter by 24h
-                // But we mark it inactive.
-            }
-            return prev.map(t => t.id === msg.session_id ? { ...t, active: false, lastTimestamp: msg.timestamp } : t);
-        });
-    }
-
+    // Handle heartbeats separately as they don't add to the message list
     if (msg.title === 'heartbeat' && msg.message !== undefined) {
         const activeIds = msg.message ? msg.message.split(',') : [];
-        
         setThreads(prev => {
             let next = [...prev];
             let changed = false;
 
-            // 1. Create placeholders for new active IDs
             activeIds.forEach(id => {
                 if (!id || id === 't1') return;
-                if (!next.some(t => t.id === id)) {
+                const idx = next.findIndex(t => t.id === id);
+                if (idx === -1) {
                     changed = true;
-                    // Trigger fetch outside of this update
                     setTimeout(() => fetchThreadInfo(id), 0);
                     next.push({
                         id: id,
@@ -208,103 +153,123 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         placeholder: true,
                         lastMsgId: 0
                     });
+                } else if (!next[idx].active) {
+                    changed = true;
+                    next[idx] = { ...next[idx], active: true, lastTimestamp: Date.now() };
                 }
             });
 
-            // 2. Update active status for known threads
+            // Mark others as inactive
             next = next.map(t => {
-                if (activeIds.includes(t.id) && !t.active) {
+                if (t.id !== 't1' && t.active && !activeIds.includes(t.id)) {
                     changed = true;
-                    return { ...t, active: true, lastTimestamp: Date.now() };
+                    return { ...t, active: false, lastTimestamp: Date.now() };
                 }
                 return t;
             });
 
-            // 3. Prune inactive non-pinned threads (No longer pruning, let sidebar handle it)
-            /*
-            const filtered = next.filter(t => {
-                if (t.pinned || t.id === 't1' || activeIds.includes(t.id)) {
-                    return true;
-                }
-                if (activeId === t.id) {
-                    setActiveId('t1');
-                }
-                changed = true;
-                return false;
-            });
-            */
-
             return changed ? next : prev;
         });
+        return;
     }
 
-    if (msg.id === 0) return; // Don't add status-only messages to message list
+    if (msg.id !== 0) {
+        setMessages(prev => {
+            if (msg.identifier) {
+                const idx = prev.findIndex(m => m.identifier === msg.identifier);
+                if (idx !== -1) {
+                    const next = [...prev];
+                    next[idx] = mapped;
+                    return next;
+                }
+            }
+            if (!prev.some(m => m.id === msg.id)) {
+                return [...prev, mapped];
+            }
+            return prev;
+        });
 
-    setMessages(prev => {
-      if (msg.identifier) {
-        const idx = prev.findIndex(m => m.identifier === msg.identifier);
-        if (idx !== -1) {
-          const next = [...prev];
-          next[idx] = mapped;
-          return next;
+        if (msg.id > newestId.current) {
+            newestId.current = msg.id;
         }
-      }
-      if (!prev.some(m => m.id === msg.id)) {
-        return [...prev, mapped];
-      }
-      return prev;
-    });
-
-    if (msg.id > newestId.current) {
-      newestId.current = msg.id;
     }
 
-    // Update thread snippet and timestamp
+    // Update threads
     setThreads(prev => {
         let changed = false;
-        const next = prev.map(t => {
-            // Update the specific session thread
-            if (msg.session_id && t.id === msg.session_id) {
-                if (msg.id < t.lastMsgId) return t;
+        const next = [...prev];
 
-                changed = true;
-                
-                // Derive title from most recent non-empty message title
-                // Filter out common system/status titles
-                let nextTitle = t.title;
-                const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service'];
-                if (msg.title && !sysTitles.includes(msg.title)) {
-                    // Strip status suffixes if present
-                    nextTitle = msg.title.replace(/ - (Done|Working|Awaiting)$/, '');
-                }
-
-                return {
-                    ...t,
-                    title: nextTitle,
-                    snippet: mapped.text || t.snippet,
-                    updated: mapped.time,
-                    lastTimestamp: msg.timestamp,
-                    status: msg.is_user ? 'working' : (mapped.status || t.status),
-                    agent: mapped.agent || t.agent, // Allow agent to be updated if it was remote
-                    // If we receive a message from a session in real-time, it must be active
-                    active: isHistory ? t.active : true,
-                    lastMsgId: msg.id
-                };
+        // 1. Update/Create session-specific thread
+        if (msg.session_id && msg.session_id !== 't1') {
+            const idx = next.findIndex(t => t.id === msg.session_id);
+            const agent = mapped.agent || 'remote';
+            const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service'];
+            
+            let title = '';
+            if (msg.title === 'session-register') {
+                title = msg.message.replace('Registered session: ', '') || 'CLI Agent';
+            } else if (msg.title && !sysTitles.includes(msg.title)) {
+                title = msg.title.replace(/ - (Done|Working|Awaiting)$/, '');
             }
-            // Update main feed snippet/time
-            if (t.id === 't1') {
-                if (msg.id < t.lastMsgId) return t;
+
+            if (idx !== -1) {
+                const t = next[idx];
+                if (msg.id >= t.lastMsgId) {
+                    changed = true;
+                    let nextActive = t.active;
+                    if (msg.title === 'session-active') nextActive = true;
+                    else if (msg.title === 'session-inactive') nextActive = false;
+                    else if (!isHistory) nextActive = true;
+
+                    next[idx] = {
+                        ...t,
+                        title: title || t.title,
+                        agent: agent !== 'remote' ? agent : t.agent,
+                        snippet: mapped.text || t.snippet,
+                        updated: mapped.time,
+                        lastTimestamp: msgTs,
+                        status: msg.is_user ? 'working' : (mapped.status || t.status),
+                        active: nextActive,
+                        lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
+                        placeholder: false
+                    };
+                }
+            } else {
                 changed = true;
-                return {
-                    ...t,
+                next.push({
+                    id: msg.session_id,
+                    agent,
+                    title: title || 'CLI Agent',
+                    status: mapped.status || 'ready',
+                    snippet: mapped.text || 'Active session',
+                    updated: mapped.time,
+                    lastTimestamp: msgTs,
+                    unread: 0,
+                    pinned: false,
+                    sessionId: msg.session_id,
+                    active: msg.title === 'session-active' || (!isHistory && msg.title !== 'session-inactive'),
+                    lastMsgId: msg.id > 0 ? msg.id : 0,
+                    placeholder: false
+                });
+            }
+        }
+
+        // 2. Update main feed thread
+        const t1Idx = next.findIndex(t => t.id === 't1');
+        if (t1Idx !== -1 && msg.id > 0) {
+            const t1 = next[t1Idx];
+            if (msg.id >= t1.lastMsgId) {
+                changed = true;
+                next[t1Idx] = {
+                    ...t1,
                     snippet: (mapped.title ? mapped.title + ': ' : '') + (mapped.text || ''),
                     updated: mapped.time,
-                    lastTimestamp: msg.timestamp,
+                    lastTimestamp: msgTs,
                     lastMsgId: msg.id
                 };
             }
-            return t;
-        });
+        }
+
         return changed ? next : prev;
     });
   };

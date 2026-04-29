@@ -108,6 +108,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
   const recentThreads = threads.filter(t => {
     if (t.id === 't1' || t.active) return false;
     const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
+    if (!ts || isNaN(ts)) return false;
     return (now - ts) < oneDay;
   });
 
@@ -186,9 +187,23 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
       }}>
         <div style={{ display: 'flex', gap: -4 }}>
           {Object.values(AGENTS)
-            .filter(a => threads.some(t => t.agent === a.id && (t.active || (t.id !== 't1' && (now - (typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp)) < oneDay))))
+            .filter(a => {
+              return threads.some(t => {
+                if (t.agent !== a.id) return false;
+                if (t.active) return true;
+                if (t.id === 't1') return false;
+                const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
+                return !isNaN(ts) && (now - ts) < oneDay;
+              });
+            })
             .map((a, i) => {
-              const agentThreads = threads.filter(t => t.agent === a.id && (t.active || (t.id !== 't1' && (now - (typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp)) < oneDay)));
+              const agentThreads = threads.filter(t => {
+                if (t.agent !== a.id) return false;
+                if (t.active) return true;
+                if (t.id === 't1') return false;
+                const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
+                return !isNaN(ts) && (now - ts) < oneDay;
+              });
               let status = 'done';
               if (agentThreads.some(t => t.status === 'working')) status = 'working';
               else if (agentThreads.some(t => t.status === 'ready' || t.status === 'awaiting')) status = 'ready';

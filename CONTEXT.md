@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Fixed the "Recent" sidebar section: consolidated thread management in `processMessage` to ensure historical sessions are correctly discovered, marked as inactive, and filtered by the 24-hour window.
 - Updated the web UI to hide the text input composer on agent threads that are not actively connected to a client.
 - Refactored the sidebar to improve flexibility: removed the "Pinned" header, and implemented "Active" (connected) and "Recent" (last 24h) sections.
 - Updated `static/chat-app.jsx` to dynamically update thread titles based on the most recent non-system message title (e.g., agent or directory name).
