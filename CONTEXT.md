@@ -41,9 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
-- Fixed the "stop" button behavior: moved the status check before the clientID prefix check in `main.go` and updated it to send both `Escape` and `C-[` (tmux Escape code) to ensure reliable task cancellation. Added logging to the CLI client for better visibility of received stop requests.
-- Enhanced `handleSend` in `static/chat-app.jsx` to support sending messages with a specific `status`.
-- Updated `mapMessage` to render `stop` status interactions as subtle status notes in the chat feed.
+- Removed the "stop" button functionality and enabled sending messages at any time, even while the agent is working.
 - Fixed session tracking in `gemini-agent` for new sessions: implemented a "start-and-exit" strategy to establish a real session ID before starting the background `push` client and the main interactive session.
 - Implemented an animated "three dot" typing/working icon on the agent side of the chat.
 - Updated `static/chat-app.jsx` to derive the typing state from the thread status: the indicator shows whenever status is anything other than `ready` or `idle` (and not on the Main Feed).

@@ -101,26 +101,16 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
             resize: 'none', maxHeight: 140, overflowY: 'auto',
           }}
         />
-        {isWorking ? (
-          <button onClick={onStop} style={{
-            all: 'unset', cursor: 'pointer',
-            width: 32, height: 32, borderRadius: 8,
-            background: theme.err, color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }} title="Stop"><IconStop size={12} /></button>
-        ) : (
-          <button onClick={send} disabled={!value.trim()} style={{
-            all: 'unset', cursor: value.trim() ? 'pointer' : 'not-allowed',
-            width: 32, height: 32, borderRadius: 8,
-            background: value.trim() ? agentColor : theme.borderStrong,
-            color: '#fff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-            transition: 'background 0.15s',
-            boxShadow: value.trim() ? `0 4px 12px ${agentColor}44` : 'none',
-          }} title="Send (Enter)"><IconArrowUp size={15} /></button>
-        )}
+        <button onClick={send} disabled={!value.trim()} style={{
+          all: 'unset', cursor: value.trim() ? 'pointer' : 'not-allowed',
+          width: 32, height: 32, borderRadius: 8,
+          background: value.trim() ? agentColor : theme.borderStrong,
+          color: '#fff',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+          transition: 'background 0.15s',
+          boxShadow: value.trim() ? `0 4px 12px ${agentColor}44` : 'none',
+        }} title="Send (Enter)"><IconArrowUp size={15} /></button>
       </div>
       <div style={{
         display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap',
