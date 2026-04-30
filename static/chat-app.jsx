@@ -3,7 +3,9 @@
 
 function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo = false, config = { interactive: false } }) {
   const [threads, setThreads] = React.useState(THREADS);
-  const [activeId, setActiveId] = React.useState('t1');
+  const [activeId, setActiveId] = React.useState(() => {
+    return localStorage.getItem('push_active_id') || 't1';
+  });
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState('');
@@ -445,7 +447,11 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const sidebar = (
     <Sidebar
       theme={theme} threads={threads} activeId={activeId}
-      onSelect={(id) => { setActiveId(id); setDrawerOpen(false); }}
+      onSelect={(id) => { 
+        setActiveId(id); 
+        localStorage.setItem('push_active_id', id);
+        setDrawerOpen(false); 
+      }}
       onClose={isPhone ? () => setDrawerOpen(false) : null}
       onOpenPalette={() => { setPaletteOpen(true); setDrawerOpen(false); }}
       dark={dark} setDark={setDark}

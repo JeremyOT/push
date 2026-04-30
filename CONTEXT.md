@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Improved UX by remembering the last selected agent/thread across page refreshes using `localStorage`.
+- Fixed the "Recent" sidebar section: ensured agents in this section always show as "passive" (grey dot) by supporting status overrides in the hierarchical tree component.
 - Fixed a critical regression where messages and agent metadata were missing from the UI due to mismatched SQL `SELECT` and `Scan` calls for the new `session_path` column.
 - Implemented a directory-based tree structure in the sidebar: agent sessions are now grouped hierarchically based on their working directory paths.
 - Added `--session-path` support to the `push` backend and `gemini-agent` script to track and transmit the session's working directory.

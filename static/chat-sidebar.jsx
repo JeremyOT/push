@@ -100,7 +100,7 @@ function SidebarThreadRow({ thread, active, theme, onClick, depth = 0 }) {
   );
 }
 
-function SidebarTree({ threads, activeId, theme, onSelect, depth = 0 }) {
+function SidebarTree({ threads, activeId, theme, onSelect, depth = 0, statusOverride = null }) {
   // Sort threads by path length so parents come first
   const sorted = [...threads].sort((a, b) => (a.sessionPath || '').length - (b.sessionPath || '').length);
   
@@ -133,7 +133,10 @@ function SidebarTree({ threads, activeId, theme, onSelect, depth = 0 }) {
 
   const renderNode = (t, d) => (
     <React.Fragment key={t.id}>
-      <SidebarThreadRow thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} depth={d} />
+      <SidebarThreadRow 
+        thread={statusOverride ? { ...t, status: statusOverride } : t} 
+        active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} depth={d} 
+      />
       {childrenMap[t.id] && childrenMap[t.id].map(c => renderNode(c, d + 1))}
     </React.Fragment>
   );
@@ -208,7 +211,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
             <>
                 <SectionLabel theme={theme}>Recent</SectionLabel>
                 <div>
-                    <SidebarTree threads={recentThreads} activeId={activeId} theme={theme} onSelect={onSelect} />
+                    <SidebarTree threads={recentThreads} activeId={activeId} theme={theme} onSelect={onSelect} statusOverride="passive" />
                 </div>
             </>
         )}
