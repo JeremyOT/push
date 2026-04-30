@@ -48,6 +48,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       link: msg.link,
       title: msg.title,
       sessionId: sid,
+      sessionPath: msg.session_path,
     };
 
     if (msg.is_user) {
@@ -229,6 +230,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         snippet: mapped.text || t.snippet,
                         updated: mapped.time,
                         lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
+                        sessionPath: msg.session_path || t.sessionPath,
                         status: msg.is_user ? 'working' : (mapped.status === 'done' ? 'working' : (mapped.status || t.status)),
                         active: nextActive,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
@@ -245,6 +247,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
+                    sessionPath: msg.session_path || '',
                     unread: 0,
                     pinned: false,
                     sessionId: sid,

@@ -65,9 +65,12 @@ if [ -f "./push" ]; then
     PUSH_CMD="./push"
 fi
 
+SESSION_PATH=$(pwd)
+
 $PUSH_CMD --cli-service tmux \
     --session-id "$SESSION_ID" \
     --session-name "$SESSION_NAME" \
+    --session-path "$SESSION_PATH" \
     --model gemini \
     --tmux-target "$TMUX_TARGET" &
 

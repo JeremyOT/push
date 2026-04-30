@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented a directory-based tree structure in the sidebar: agent sessions are now grouped hierarchically based on their working directory paths.
+- Added `--session-path` support to the `push` backend and `gemini-agent` script to track and transmit the session's working directory.
 - Refined agent status visualization: agent threads now remain "working" (orange dot) in the sidebar and header after a turn is "done", while inline status notes for "done" messages retain their green dot.
 - Implemented a "passive" status (grey dot) for disconnected sessions in the "Recent" sidebar section and agent fleet footer.
 - Consolidated "Idle" and "Awaiting" agent statuses into a single "Ready" status with a green dot for consistent visual feedback.

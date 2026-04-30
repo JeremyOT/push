@@ -49,6 +49,7 @@ type Interaction struct {
 	Status          string    `json:"status,omitempty"`
 	Agent           string    `json:"agent,omitempty"`
 	SessionID       string    `json:"session_id,omitempty"`
+	SessionPath     string    `json:"session_path,omitempty"`
 }
 
 var vapidPrivateKey string
@@ -110,6 +111,7 @@ func main() {
 	tmuxTarget := flag.String("tmux-target", "", "Target tmux pane for 'tmux' mode (e.g., session:window.pane)")
 	sessionID := flag.String("session-id", "", "Session ID for the CLI service")
 	sessionName := flag.String("session-name", "", "Session name (display title) for the CLI service")
+	sessionPath := flag.String("session-path", "", "Working directory path for the CLI service")
 	modelName := flag.String("model", "", "Model name for the CLI service")
 	flag.Parse()
 
@@ -122,7 +124,7 @@ func main() {
 			<-sigChan
 			cancel()
 		}()
-		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *modelName, os.Stdin, os.Stdout, os.Stderr)
+		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 
@@ -353,7 +355,8 @@ func initDB(db *sql.DB) error {
 			timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 			status TEXT DEFAULT '',
 			agent TEXT DEFAULT '',
-			session_id TEXT DEFAULT ''
+			session_id TEXT DEFAULT '',
+			session_path TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -383,6 +386,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN status TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN agent TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN session_id TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN session_path TEXT DEFAULT ''")
 
 	return nil
 }
@@ -483,7 +487,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID); err != nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID, &i.SessionPath); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -537,9 +541,10 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingStatus string
 		var existingAgent string
 		var existingSessionID string
+		var existingSessionPath string
 		var existingIsUser bool
 		var existingQuiet bool
-		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent, session_id, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent, &existingSessionID, &existingIsUser, &existingQuiet)
+		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
 		if err == nil {
 			// Exists, update it
 			if i.Title == "" {
@@ -556,6 +561,9 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			}
 			if i.SessionID == "" {
 				i.SessionID = existingSessionID
+			}
+			if i.SessionPath == "" {
+				i.SessionPath = existingSessionPath
 			}
 			// For boolean fields, we only merge if the new value is false and existing was true?
 			// Actually, it's better to just check if they were provided in JSON.
@@ -576,7 +584,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				i.Message = existingMessage + i.Message
 				i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
 			}
-			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, agent = ?, session_id = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, id)
+			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, i.SessionPath, id)
 			if err != nil {
 				return err
 			}
@@ -585,7 +593,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			i.Update = true
 		} else if err == sql.ErrNoRows {
 			// Not found, insert new
-			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID)
+			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, i.SessionPath)
 			if err != nil {
 				return err
 			}
@@ -648,7 +656,7 @@ func isTerminal(r io.Reader) bool {
 	return false
 }
 
-func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, model string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
+func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, sessionPath string, model string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
 		clientID = strings.TrimPrefix(mode, "tmux:")
@@ -682,7 +690,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 	}
 
 	sendMsg := func(text string, title string, agent string, status string) {
-		i := Interaction{Message: text, Title: title, SessionID: sessionID, Agent: agent, Status: status}
+		i := Interaction{Message: text, Title: title, SessionID: sessionID, SessionPath: sessionPath, Agent: agent, Status: status}
 		data, _ := json.Marshal(i)
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Post(fmt.Sprintf("http://%s/service?stream=false", address), "application/x-ndjson", bytes.NewReader(append(data, '\n')))
@@ -703,6 +711,13 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
 		}()
 	}
+
+	// Registration
+	regMsg := "Registered session: " + title
+	if clientID != "" {
+		regMsg += " (Client ID: " + clientID + ")"
+	}
+	sendMsg(regMsg, "session-register", agent, "r")
 
 	// Receiver: Stream from GET /service
 	go func() {

@@ -44,58 +44,104 @@ function AgentMark({ agent, size = 22, theme, ring = false, status = null }) {
   );
 }
 
-function SidebarThreadRow({ thread, active, theme, onClick }) {
+function SidebarThreadRow({ thread, active, theme, onClick, depth = 0 }) {
   const a = AGENTS[thread.agent];
   return (
     <button
       onClick={onClick}
       style={{
         all: 'unset', cursor: 'pointer', display: 'block',
-        padding: '10px 12px', borderRadius: 10,
+        padding: `8px 12px 8px ${12 + (depth * 16)}px`, borderRadius: 10,
         background: active ? theme.panel2 : 'transparent',
         boxShadow: active ? `inset 0 0 0 1px ${theme.border}` : 'none',
         transition: 'background 0.15s',
         position: 'relative',
+        marginBottom: 2,
       }}
       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = theme.panel2; }}
       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
     >
       {active && (
         <div style={{
-          position: 'absolute', left: -1, top: 10, bottom: 10, width: 2,
+          position: 'absolute', left: -1, top: 8, bottom: 8, width: 2,
           background: a.color, borderRadius: 2,
         }} />
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-        <AgentMark agent={thread.agent} size={20} theme={theme} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
+        <AgentMark agent={thread.agent} size={18} theme={theme} />
         <div style={{
           flex: 1, minWidth: 0,
-          fontFamily: FONT_SANS, fontSize: 13.5, fontWeight: 500,
+          fontFamily: FONT_SANS, fontSize: 13, fontWeight: 500,
           color: theme.fg,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{thread.title}</div>
         <span style={{
-          fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgDim,
+          fontFamily: FONT_MONO, fontSize: 9.5, color: theme.fgDim,
           whiteSpace: 'nowrap', flexShrink: 0,
         }}>{thread.updated}</span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 30 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 28 }}>
         {thread.id !== 't1' && <StatusPill status={thread.status} theme={theme} />}
         <div style={{
           flex: 1, minWidth: 0,
-          fontFamily: FONT_SANS, fontSize: 12, color: theme.fgMuted,
+          fontFamily: FONT_SANS, fontSize: 11.5, color: theme.fgMuted,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{thread.snippet}</div>
         {thread.unread > 0 && (
           <span style={{
-            minWidth: 16, height: 16, padding: '0 5px', borderRadius: 999,
+            minWidth: 14, height: 14, padding: '0 4px', borderRadius: 999,
             background: theme.accent, color: theme.accentFg,
-            fontFamily: FONT_MONO, fontSize: 10, fontWeight: 600,
+            fontFamily: FONT_MONO, fontSize: 9, fontWeight: 600,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}>{thread.unread}</span>
         )}
       </div>
     </button>
+  );
+}
+
+function SidebarTree({ threads, activeId, theme, onSelect, depth = 0 }) {
+  // Sort threads by path length so parents come first
+  const sorted = [...threads].sort((a, b) => (a.sessionPath || '').length - (b.sessionPath || '').length);
+  
+  const roots = [];
+  const childrenMap = {};
+
+  threads.forEach(t => {
+    const path = t.sessionPath || '';
+    // Find potential parent: another thread where our path starts with its path
+    // and its path is shorter but the longest possible match.
+    let parent = null;
+    threads.forEach(p => {
+      if (t.id === p.id) return;
+      const pPath = p.sessionPath || '';
+      if (!pPath) return;
+      if (path.startsWith(pPath) && path !== pPath && path[pPath.length] === '/') {
+        if (!parent || pPath.length > (parent.sessionPath || '').length) {
+          parent = p;
+        }
+      }
+    });
+
+    if (parent) {
+      childrenMap[parent.id] = childrenMap[parent.id] || [];
+      childrenMap[parent.id].push(t);
+    } else {
+      roots.push(t);
+    }
+  });
+
+  const renderNode = (t, d) => (
+    <React.Fragment key={t.id}>
+      <SidebarThreadRow thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} depth={d} />
+      {childrenMap[t.id] && childrenMap[t.id].map(c => renderNode(c, d + 1))}
+    </React.Fragment>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {roots.map(r => renderNode(r, depth))}
+    </div>
   );
 }
 
@@ -144,7 +190,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
       {/* threads */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 16px' }}>
         {mainFeed && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 12 }}>
+            <div style={{ marginBottom: 12 }}>
                 <SidebarThreadRow thread={mainFeed} active={mainFeed.id === activeId} theme={theme} onClick={() => onSelect(mainFeed.id)} />
             </div>
         )}
@@ -152,10 +198,8 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
         {activeThreads.length > 0 && (
             <>
                 <SectionLabel theme={theme}>Active</SectionLabel>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 12 }}>
-                    {activeThreads.map((t) => (
-                        <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
-                    ))}
+                <div style={{ marginBottom: 12 }}>
+                    <SidebarTree threads={activeThreads} activeId={activeId} theme={theme} onSelect={onSelect} />
                 </div>
             </>
         )}
@@ -163,10 +207,8 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
         {recentThreads.length > 0 && (
             <>
                 <SectionLabel theme={theme}>Recent</SectionLabel>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {recentThreads.map((t) => (
-                        <SidebarThreadRow key={t.id} thread={{...t, status: 'passive'}} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
-                    ))}
+                <div>
+                    <SidebarTree threads={recentThreads} activeId={activeId} theme={theme} onSelect={onSelect} />
                 </div>
             </>
         )}
