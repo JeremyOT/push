@@ -71,8 +71,15 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Updated `gemini-agent` script to prioritize using a local `./push` binary if available, falling back to the system `push` command otherwise.
+- Fixed a bug where active sessions incorrectly appeared in the "Recent" sidebar section; implemented hierarchical activity tracking to ensure that if a session or any of its descendants is active, the entire tree is moved to the "Active" section.
+- Fixed incorrect status dots for inactive sessions; added `statusOverride="passive"` and ensured `AgentMark` and `StatusPill` consistently respect this override to show a grey dot for all recent/inactive threads.
+- Fixed a bug where system messages (like `session-active`) with ID 0 were ignored by the frontend due to a strict `lastMsgId` check; the UI now processes all messages with ID 0 to ensure real-time status and activity updates are reflected immediately.
+- Improved `AgentMark` in the sidebar to include a status dot, providing better visual feedback for session states in the thread list.
+- Fixed several `main_test.go` failures by updating `runCliClient` calls to match the current function signature.
 ## Project Conventions
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
+- **Sidebar Session Management:** An active agent/session should NEVER appear in the "Recent" list. If a session is active (or has active descendants), it must be in the "Active" section.
+- **Inactive Session Status:** Sessions in the "Recent" list must always show as "passive" with a grey dot, regardless of their last message status.
 
 ## Recent Changes
 - Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.

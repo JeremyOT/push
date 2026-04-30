@@ -644,7 +644,7 @@ func TestRunCliClient(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Run client in background
-	go runCliClient(ctx, addr, "text", "", "sess-456", "Test Session", "gemini", stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-456", "Test Session", "/tmp", "gemini", stdinReader, &stdout, &stderr)
 
 	// Give it a moment to connect
 	time.Sleep(200 * time.Millisecond)
@@ -693,7 +693,7 @@ func TestRunCliClientModes(t *testing.T) {
 	stdinReader, stdinWriter := io.Pipe()
 	var stdout, stderr bytes.Buffer
 
-	go runCliClient(ctx, addr, "json", "", "", "", "", stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "json", "", "", "", "", "", stdinReader, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond) // Wait for connection
 
 	// Send JSON interaction via stdin
@@ -720,7 +720,7 @@ func TestRunCliClientModes(t *testing.T) {
 	defer cancel2()
 	stdinReader2, stdinWriter2 := io.Pipe()
 	
-	go runCliClient(ctx2, addr, "jsonr", "", "", "", "", stdinReader2, &stdout, &stderr)
+	go runCliClient(ctx2, addr, "jsonr", "", "", "", "", "", stdinReader2, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond)
 	
 	fmt.Fprintln(stdinWriter2, "Normal Msg")
@@ -1035,7 +1035,7 @@ func TestRunCliClientMetadata(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Run client with specific session, name, and model
-	go runCliClient(ctx, addr, "text", "", "sess-999", "Special Session", "gemini-pro", stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-999", "Special Session", "/tmp", "gemini-pro", stdinReader, &stdout, &stderr)
 
 	// Give it a moment to connect and send registration
 	time.Sleep(300 * time.Millisecond)

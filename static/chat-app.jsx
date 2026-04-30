@@ -218,7 +218,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
             if (idx !== -1) {
                 const t = next[idx];
-                if (msg.id >= t.lastMsgId) {
+                if (msg.id >= t.lastMsgId || msg.id === 0) {
                     changed = true;
                     let nextActive = t.active;
                     if (msg.title === 'session-active') nextActive = true;
