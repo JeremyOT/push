@@ -4,3 +4,4 @@ push.sqlite
 output
 *.log
 deploy.sh
+coverage.out
