@@ -41,6 +41,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Simplified agent restart logic: replaced UNIX signal-based coordination with a local `.gemini-agent.restart` file. The `push` client now writes the restart mode ("fresh" or "resume") to this file and sends `/exit` to the `gemini-cli` tmux pane, allowing for a cleaner and more robust restart loop in the `gemini-agent` script.
+- Updated `gemini-agent` to remove signal traps and implementation of a file-based restart check after the main Gemini process exits.
+- Updated `main.go` to handle `/restart` and `/restart resume` by writing to `.gemini-agent.restart` and forwarding `/exit` to tmux.
 - Improved UX by remembering the last selected agent/thread across page refreshes using `localStorage`.
 - Fixed the "Recent" sidebar section: ensured agents in this section always show as "passive" (grey dot) by supporting status overrides in the hierarchical tree component.
 - Fixed a critical regression where messages and agent metadata were missing from the UI due to mismatched SQL `SELECT` and `Scan` calls for the new `session_path` column.

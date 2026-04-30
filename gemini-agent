@@ -44,14 +44,12 @@ if [ -f "./push" ]; then
 fi
 
 SESSION_PATH=$(pwd)
-RESTART_MODE=0
+RESTART_FILE=".gemini-agent.restart"
 
-# Traps for restart signals from the push client
-trap 'RESTART_MODE=101; [ -n "$GEMINI_PID" ] && kill -TERM $GEMINI_PID 2>/dev/null' USR1
-trap 'RESTART_MODE=102; [ -n "$GEMINI_PID" ] && kill -TERM $GEMINI_PID 2>/dev/null' USR2
+# Ensure clean state
+rm -f "$RESTART_FILE"
 
 while true; do
-    RESTART_MODE=0
     # Determine Session ID
     if [ "$RESUME" = true ]; then
         # Get the latest session ID from the list
@@ -86,7 +84,7 @@ while true; do
     gemini --resume latest "${GEMINI_ARGS[@]}" &
     GEMINI_PID=$!
 
-    # Wait for Gemini to finish (either normally or via kill from trap)
+    # Wait for Gemini to finish
     wait $GEMINI_PID
     EXIT_CODE=$?
 
@@ -95,13 +93,16 @@ while true; do
     wait $PUSH_PID 2>/dev/null
     
     # Handle restart requests
-    if [ "$RESTART_MODE" -eq 101 ]; then
-        echo "Restarting fresh..."
-        RESUME=false
-        continue
-    elif [ "$RESTART_MODE" -eq 102 ]; then
-        echo "Restarting and resuming session..."
-        RESUME=true
+    if [ -f "$RESTART_FILE" ]; then
+        MODE=$(cat "$RESTART_FILE")
+        rm -f "$RESTART_FILE"
+        if [ "$MODE" = "resume" ]; then
+            echo "Restarting and resuming session..."
+            RESUME=true
+        else
+            echo "Restarting fresh..."
+            RESUME=false
+        fi
         continue
     fi
 

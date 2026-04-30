@@ -861,13 +861,13 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							}
 						}
 
-						if msg == "/restart" {
-							syscall.Kill(os.Getppid(), syscall.SIGUSR1)
-							os.Exit(101)
-						}
-						if msg == "/restart resume" {
-							syscall.Kill(os.Getppid(), syscall.SIGUSR2)
-							os.Exit(102)
+						if msg == "/restart" || msg == "/restart resume" {
+							mode := "fresh"
+							if msg == "/restart resume" {
+								mode = "resume"
+							}
+							_ = os.WriteFile(".gemini-agent.restart", []byte(mode), 0644)
+							msg = "/exit"
 						}
 
 						// Send the message
