@@ -440,11 +440,11 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if latestPerSession {
 				// Fetch the latest interaction for each session_id
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY session_id) ORDER BY id ASC"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id, session_path FROM interactions WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY session_id) ORDER BY id ASC"
 				rows, err = db.Query(query)
 			} else if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id > ?"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id, session_path FROM interactions WHERE id > ?"
 				args := []interface{}{after}
 				if sessionID != "" {
 					query += " AND session_id = ?"
@@ -455,7 +455,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE id < ?"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id, session_path FROM interactions WHERE id < ?"
 				args := []interface{}{before}
 				if sessionID != "" {
 					query += " AND session_id = ?"
@@ -467,7 +467,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id, session_path FROM interactions"
 				var args []interface{}
 				if sessionID != "" {
 					query += " WHERE session_id = ?"
@@ -604,7 +604,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			return err
 		}
 	} else {
-		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID)
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, i.SessionPath)
 		if err != nil {
 			return err
 		}
@@ -1047,7 +1047,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		flusher.Flush()
 
 		sentIds := make(map[int64]bool)
-		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id FROM interactions WHERE "
+		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, agent, session_id, session_path FROM interactions WHERE "
 		var args []interface{}
 		if startID > 0 {
 			query += "id > ?"
@@ -1067,7 +1067,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID); err == nil {
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Agent, &i.SessionID, &i.SessionPath); err == nil {
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()
