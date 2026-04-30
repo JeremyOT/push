@@ -30,27 +30,6 @@ if [ "$YOLO" = true ]; then
     GEMINI_ARGS=("-y" "${GEMINI_ARGS[@]}")
 fi
 
-# Determine Session ID
-if [ "$RESUME" = true ]; then
-    # Get the latest session ID from the list
-    SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
-    if [ -z "$SESSION_ID" ]; then
-        echo "Warning: No session found to resume. Initializing new session..."
-        RESUME=false
-    else
-        echo "Resuming session: $SESSION_ID"
-    fi
-fi
-
-if [ "$RESUME" = false ]; then
-    echo "Initializing new session..."
-    # Start and exit immediately to create the session
-    # We use --skip-trust to avoid interactive prompts
-    echo "exit" | gemini --skip-trust > /dev/null 2>&1
-    SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
-    echo "Started session: $SESSION_ID"
-fi
-
 # Get current tmux pane ID
 if [ -n "$TMUX" ]; then
     TMUX_TARGET=$(tmux display-message -p '#{pane_id}')
@@ -59,25 +38,73 @@ else
     exit 1
 fi
 
-# Start push client in the background
 PUSH_CMD="push"
 if [ -f "./push" ]; then
     PUSH_CMD="./push"
 fi
 
 SESSION_PATH=$(pwd)
+RESTART_MODE=0
 
-$PUSH_CMD --cli-service tmux \
-    --session-id "$SESSION_ID" \
-    --session-name "$SESSION_NAME" \
-    --session-path "$SESSION_PATH" \
-    --model gemini \
-    --tmux-target "$TMUX_TARGET" &
+# Traps for restart signals from the push client
+trap 'RESTART_MODE=101; [ -n "$GEMINI_PID" ] && kill -TERM $GEMINI_PID 2>/dev/null' USR1
+trap 'RESTART_MODE=102; [ -n "$GEMINI_PID" ] && kill -TERM $GEMINI_PID 2>/dev/null' USR2
 
-PUSH_PID=$!
+while true; do
+    RESTART_MODE=0
+    # Determine Session ID
+    if [ "$RESUME" = true ]; then
+        # Get the latest session ID from the list
+        SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        if [ -z "$SESSION_ID" ]; then
+            echo "Warning: No session found to resume. Initializing new session..."
+            RESUME=false
+        else
+            echo "Resuming session: $SESSION_ID"
+        fi
+    fi
 
-# Hook to terminate push client when gemini-cli exits
-trap "kill $PUSH_PID 2>/dev/null" EXIT
+    if [ "$RESUME" = false ]; then
+        echo "Initializing new session..."
+        # Start and exit immediately to create the session
+        # We use --skip-trust to avoid interactive prompts
+        echo "exit" | gemini --skip-trust > /dev/null 2>&1
+        SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        echo "Started session: $SESSION_ID"
+    fi
 
-# Start gemini-cli by resuming the established session
-gemini --resume latest "${GEMINI_ARGS[@]}"
+    # Start push client in the background
+    $PUSH_CMD --cli-service tmux \
+        --session-id "$SESSION_ID" \
+        --session-name "$SESSION_NAME" \
+        --session-path "$SESSION_PATH" \
+        --model gemini \
+        --tmux-target "$TMUX_TARGET" &
+    PUSH_PID=$!
+
+    # Start gemini-cli by resuming the established session
+    gemini --resume latest "${GEMINI_ARGS[@]}" &
+    GEMINI_PID=$!
+
+    # Wait for Gemini to finish (either normally or via kill from trap)
+    wait $GEMINI_PID
+    EXIT_CODE=$?
+
+    # Cleanup push client
+    kill $PUSH_PID 2>/dev/null
+    wait $PUSH_PID 2>/dev/null
+    
+    # Handle restart requests
+    if [ "$RESTART_MODE" -eq 101 ]; then
+        echo "Restarting fresh..."
+        RESUME=false
+        continue
+    elif [ "$RESTART_MODE" -eq 102 ]; then
+        echo "Restarting and resuming session..."
+        RESUME=true
+        continue
+    fi
+
+    # Normal exit
+    exit $EXIT_CODE
+done

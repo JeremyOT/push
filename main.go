@@ -861,6 +861,15 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							}
 						}
 
+						if msg == "/restart" {
+							syscall.Kill(os.Getppid(), syscall.SIGUSR1)
+							os.Exit(101)
+						}
+						if msg == "/restart resume" {
+							syscall.Kill(os.Getppid(), syscall.SIGUSR2)
+							os.Exit(102)
+						}
+
 						// Send the message
 						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, msg)
 						if err := cmd.Run(); err != nil {

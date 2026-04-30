@@ -71,7 +71,9 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Updated `gemini-agent` script to prioritize using a local `./push` binary if available, falling back to the system `push` command otherwise.
-- Added `/clear`, `/memory reload`, and `/compress` commands to the `CommandPalette` in the web UI, allowing users to easily trigger these Gemini-specific actions.
+- Added `/clear`, `/memory reload`, and `/compress` commands to the `CommandPalette` in the web UI.
+- Implemented a `/restart` and `/restart resume` command for the `push` client in `tmux` mode; these commands allow the client to signal the parent `gemini-agent` script to restart both the client and the `gemini-cli` session.
+- Updated `gemini-agent` to support a restart loop: signal 101 (via `SIGUSR1`) triggers a fresh restart, while signal 102 (via `SIGUSR2`) triggers a restart with session resumption.
 - Updated `static/chat-composer.jsx` to include the new commands in the palette items and added support for the `refresh` icon.
 - Fixed a bug where the sidebar tree structure was lost after a restart due to missing `session_path` metadata in hook-generated interactions; implemented backend metadata inheritance in `main.go` to ensure all messages in a session share the same path, agent, and title.
 - Updated `hooks/gemini/afteragent.py` and `hooks/gemini/aftermodel.py` to explicitly report the full `session_path` (from `cwd`), ensuring hierarchical metadata is preserved across all agent turns.
@@ -86,6 +88,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Sidebar Session Management:** An active agent/session should NEVER appear in the "Recent" list. If a session is active (or has active descendants), it must be in the "Active" section.
 - **Inactive Session Status:** Sessions in the "Recent" list must always show as "passive" with a grey dot, regardless of their last message status.
 - **Session Metadata Inheritance:** The backend automatically fills missing `session_path`, `agent`, and `title` for new interactions if a `session_id` is provided, inheriting from the most recent record with that ID.
+- **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
 - Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.
