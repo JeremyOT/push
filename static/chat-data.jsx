@@ -44,6 +44,7 @@ const STATUS = {
   working:  { label: 'working',      dot: '#f59e0b' },
   error:    { label: 'error',        dot: '#ef4444' },
   awaiting: { label: 'ready',        dot: '#22c55e' },
+  passive:  { label: 'passive',      dot: '#9ca3af' },
 };
 
 const THREADS = [

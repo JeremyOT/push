@@ -229,7 +229,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         snippet: mapped.text || t.snippet,
                         updated: mapped.time,
                         lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
-                        status: msg.is_user ? 'working' : (mapped.status || t.status),
+                        status: msg.is_user ? 'working' : (mapped.status === 'done' ? 'working' : (mapped.status || t.status)),
                         active: nextActive,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
                         placeholder: false
@@ -241,7 +241,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     id: sid,
                     agent,
                     title: (title || 'CLI Agent').trim(),
-                    status: mapped.status || 'ready',
+                    status: mapped.status === 'done' ? 'working' : (mapped.status || 'ready'),
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,

@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Refined agent status visualization: agent threads now remain "working" (orange dot) in the sidebar and header after a turn is "done", while inline status notes for "done" messages retain their green dot.
+- Implemented a "passive" status (grey dot) for disconnected sessions in the "Recent" sidebar section and agent fleet footer.
 - Consolidated "Idle" and "Awaiting" agent statuses into a single "Ready" status with a green dot for consistent visual feedback.
 - Updated the sidebar footer to display the count of "ready" agents instead of "awaiting".
 - Hardened session grouping and deduplication in the sidebar: implemented strict `session_id` trimming, string-type normalization, and refined thread update logic to prevent duplicate entries for the same session ID.

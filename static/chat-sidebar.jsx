@@ -165,7 +165,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
                 <SectionLabel theme={theme}>Recent</SectionLabel>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     {recentThreads.map((t) => (
-                        <SidebarThreadRow key={t.id} thread={t} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
+                        <SidebarThreadRow key={t.id} thread={{...t, status: 'passive'}} active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} />
                     ))}
                 </div>
             </>
@@ -204,9 +204,10 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
                 const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
                 return !isNaN(ts) && (now - ts) < oneDay;
               });
-              let status = 'done';
-              if (agentThreads.some(t => t.status === 'working')) status = 'working';
-              else if (agentThreads.some(t => t.status === 'ready' || t.status === 'awaiting')) status = 'ready';
+
+              let status = 'passive';
+              if (agentThreads.some(t => t.active && t.status === 'working')) status = 'working';
+              else if (agentThreads.some(t => t.active && t.status === 'ready')) status = 'ready';
 
               return (
                 <button key={a.id} 

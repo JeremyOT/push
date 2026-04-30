@@ -36,7 +36,7 @@ function ChatHeader({ theme, thread, onMenu, isPhone, solo = false }) {
           {thread.id !== 't1' && (
             <>
               <span>·</span>
-              <StatusPill status={thread.status} theme={theme} />
+              <StatusPill status={thread.active ? thread.status : 'passive'} theme={theme} />
             </>
           )}
         </div>
