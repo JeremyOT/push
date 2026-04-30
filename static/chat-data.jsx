@@ -39,11 +39,11 @@ const AGENTS = {
 // status: 'done' | 'idle' | 'working' | 'error' | 'awaiting'
 const STATUS = {
   done:     { label: 'done',         dot: '#22c55e' },
-  ready:    { label: 'awaiting',     dot: '#22c55e' },
-  idle:     { label: 'idle',         dot: '#9ca3af' },
+  ready:    { label: 'ready',        dot: '#22c55e' },
+  idle:     { label: 'ready',        dot: '#22c55e' },
   working:  { label: 'working',      dot: '#f59e0b' },
   error:    { label: 'error',        dot: '#ef4444' },
-  awaiting: { label: 'awaiting you', dot: '#3b82f6' },
+  awaiting: { label: 'ready',        dot: '#22c55e' },
 };
 
 const THREADS = [

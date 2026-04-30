@@ -110,7 +110,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         ...base,
         kind: 'status',
         agent: agentId,
-        status: status || 'idle',
+        status: status || 'ready',
       };
     }
 

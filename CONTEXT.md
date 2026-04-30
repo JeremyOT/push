@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Consolidated "Idle" and "Awaiting" agent statuses into a single "Ready" status with a green dot for consistent visual feedback.
+- Updated the sidebar footer to display the count of "ready" agents instead of "awaiting".
 - Hardened session grouping and deduplication in the sidebar: implemented strict `session_id` trimming, string-type normalization, and refined thread update logic to prevent duplicate entries for the same session ID.
 - Fixed the "Recent" sidebar section: consolidated thread management in `processMessage` to ensure historical sessions are correctly discovered, marked as inactive, and filtered by the 24-hour window.
 - Updated the web UI to hide the text input composer on agent threads that are not actively connected to a client.
