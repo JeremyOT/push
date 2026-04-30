@@ -88,6 +88,8 @@ def main():
                     "message": "",
                     "detailed_message": "",
                     "status": "d",
+                    "session_id": session_id,
+                    "session_path": cwd,
                     "quiet": False
                 }
                 # We can still send other metadata if needed
@@ -102,6 +104,7 @@ def main():
                 "agent": "gemini",
                 "status": status,
                 "session_id": session_id,
+                "session_path": cwd,
                 "link": "",
                 "detailed_message": detailed_message,
                 "quiet": status == "w"

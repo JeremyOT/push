@@ -34,6 +34,7 @@ def main():
             "agent": "gemini",
             "status": "r",
             "session_id": session_id,
+            "session_path": cwd,
             "link": "",
             "detailed_message": message,
             "quiet": False #True

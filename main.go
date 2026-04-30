@@ -530,6 +530,9 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 }
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
+	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent") {
+		fillMissingMetadata(db, i)
+	}
 	if i.Identifier != "" {
 		// Check if it already exists
 		var id int64
@@ -620,6 +623,41 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	// Broadcast for streaming to all clients
 	broadcaster.Broadcast(*i)
 	return nil
+}
+
+func fillMissingMetadata(db *sql.DB, i *Interaction) {
+	if i.SessionID == "" {
+		return
+	}
+	var existingTitle string
+	var existingAgent string
+	var existingSessionPath string
+	// Try to find the most recent non-empty metadata for this session
+	err := db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND session_path != '' ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+	if err == nil {
+		if i.SessionPath == "" {
+			i.SessionPath = existingSessionPath
+		}
+		if i.Agent == "" || i.Agent == "remote" {
+			i.Agent = existingAgent
+		}
+		// Only inherit title if current is generic
+		if i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" {
+			i.Title = existingTitle
+		}
+	} else {
+		// Try again without the session_path constraint if we still need title/agent
+		_ = db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent') ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent") {
+			i.Title = existingTitle
+		}
+		if existingAgent != "" && (i.Agent == "" || i.Agent == "remote") {
+			i.Agent = existingAgent
+		}
+		if existingSessionPath != "" && i.SessionPath == "" {
+			i.SessionPath = existingSessionPath
+		}
+	}
 }
 
 func sendMessage(address, message, title string) error {
@@ -957,10 +995,13 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			sessionsMu.Lock()
 			activeSessions[sessionID]++
 			if activeSessions[sessionID] == 1 {
-				go broadcaster.Broadcast(Interaction{
+				// Broadcast with metadata if available
+				i := Interaction{
 					Title:     "session-active",
 					SessionID: sessionID,
-				})
+				}
+				fillMissingMetadata(db, &i)
+				go broadcaster.Broadcast(i)
 			}
 			sessionsMu.Unlock()
 
