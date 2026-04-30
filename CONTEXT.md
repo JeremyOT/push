@@ -71,6 +71,8 @@ go build -ldflags="-w -s" -o push main.go
 - Updated `main.go` to support displaying `(Ready)` in the CLI service output.
 - Fixed a bug where the chat view would not scroll to the bottom when messages were updated in place (e.g., during streaming); memoized `filteredMessages` and updated the scroll effect to trigger on any message content change.
 - Updated `gemini-agent` script to prioritize using a local `./push` binary if available, falling back to the system `push` command otherwise.
+- Added `/clear`, `/memory reload`, and `/compress` commands to the `CommandPalette` in the web UI, allowing users to easily trigger these Gemini-specific actions.
+- Updated `static/chat-composer.jsx` to include the new commands in the palette items and added support for the `refresh` icon.
 - Fixed a bug where the sidebar tree structure was lost after a restart due to missing `session_path` metadata in hook-generated interactions; implemented backend metadata inheritance in `main.go` to ensure all messages in a session share the same path, agent, and title.
 - Updated `hooks/gemini/afteragent.py` and `hooks/gemini/aftermodel.py` to explicitly report the full `session_path` (from `cwd`), ensuring hierarchical metadata is preserved across all agent turns.
 - Enhanced `session-active` broadcasts to include the session's latest metadata, allowing the frontend to immediately correctly place new active sessions in the tree.

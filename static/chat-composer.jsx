@@ -133,6 +133,9 @@ const PALETTE_ITEMS = [
   { id: 'p2', cmd: '/diff', label: 'Show diff', desc: 'Inline diff between current branch and main', icon: 'file' },
   { id: 'p3', cmd: '/explain', label: 'Explain code', desc: 'Walk through a file or selection', icon: 'sparkle' },
   { id: 'p4', cmd: '/test', label: 'Run tests', desc: 'Execute test suite and summarize failures', icon: 'check' },
+  { id: 'p5', cmd: '/clear', label: 'Clear context', desc: 'Start a fresh conversation (resets context)', icon: 'terminal' },
+  { id: 'p6', cmd: '/memory reload', label: 'Reload memory', desc: 'Force refresh of memory and instructions', icon: 'refresh' },
+  { id: 'p7', cmd: '/compress', label: 'Compress history', desc: 'Summarize history to save tokens', icon: 'sparkle' },
 ];
 
 function CommandPalette({ theme, open, onClose, onPick }) {
@@ -154,6 +157,7 @@ function CommandPalette({ theme, open, onClose, onPick }) {
     terminal: <IconTerminal size={14} />, file: <IconFile size={14} />,
     sparkle: <IconSparkle size={14} />, check: <IconCheck size={14} />,
     plus: <IconPlus size={14} />, search: <IconSearch size={14} />,
+    refresh: <IconRefresh size={14} />,
   }[k]);
 
   return (
