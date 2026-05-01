@@ -871,12 +871,12 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						}
 
 						// Send the message
-						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, msg)
+						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "-l", "--", msg)
 						if err := cmd.Run(); err != nil {
 							fmt.Fprintf(stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
 						// Small sleep before Enter
-						time.Sleep(100 * time.Millisecond)
+						time.Sleep(500 * time.Millisecond)
 						// Send Enter
 						cmd = exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Enter")
 						if err := cmd.Run(); err != nil {
