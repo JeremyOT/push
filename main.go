@@ -117,10 +117,20 @@ func main() {
 	sessionPath := flag.String("session-path", "", "Working directory path for the CLI service")
 	modelName := flag.String("model", "", "Model name for the CLI service")
 	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded gemini-agent script")
+	resumeAgent := flag.Bool("resume", false, "Resume the last gemini-agent session")
+	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass -y to gemini)")
 	flag.Parse()
 
 	if *geminiAgent {
-		runGeminiAgent(flag.Args())
+		var agentArgs []string
+		if *resumeAgent {
+			agentArgs = append(agentArgs, "--resume")
+		}
+		if *yoloAgent {
+			agentArgs = append(agentArgs, "--yolo")
+		}
+		agentArgs = append(agentArgs, flag.Args()...)
+		runGeminiAgent(agentArgs)
 		return
 	}
 

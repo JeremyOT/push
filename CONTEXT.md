@@ -101,6 +101,8 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Updated `main.go` to support `--resume` and `--yolo` flags, which are now correctly passed through to the embedded `gemini-agent` script when running in `--gemini-agent` mode.
+- Fixed a bug where `--resume` and `--yolo` flags were not recognized by the `push` binary, preventing them from being used with the embedded agent.
 - Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.
 - Enhanced the sidebar footer: agent icons now only show for currently active or pinned agents, and each icon includes a status dot reflecting the most urgent state of its associated sessions.
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
