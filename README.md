@@ -70,7 +70,7 @@ The `push` binary includes the `gemini-agent` logic embedded directly, providing
 Run the agent from within a `tmux` session:
 
 ```bash
-./push --agent [session-name] [--resume] [--yolo]
+./push --gemini-agent [session-name] [--resume] [--yolo]
 ```
 
 *   **`session-name`**: (Optional) A display name for the session. Defaults to the current directory name.

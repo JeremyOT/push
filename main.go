@@ -116,10 +116,10 @@ func main() {
 	sessionName := flag.String("session-name", "", "Session name (display title) for the CLI service")
 	sessionPath := flag.String("session-path", "", "Working directory path for the CLI service")
 	modelName := flag.String("model", "", "Model name for the CLI service")
-	agent := flag.Bool("agent", false, "Run the embedded gemini-agent script")
+	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded gemini-agent script")
 	flag.Parse()
 
-	if *agent {
+	if *geminiAgent {
 		runGeminiAgent(flag.Args())
 		return
 	}
@@ -1261,8 +1261,22 @@ func runGeminiAgent(args []string) {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command("bash", append([]string{"-s", "--"}, args...)...)
-	cmd.Stdin = strings.NewReader(geminiAgentScript)
+	// Create a temporary file for the script to allow stdin pass-through
+	tmpFile, err := os.CreateTemp("", "gemini-agent-*.sh")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temporary script file: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(geminiAgentScript); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing temporary script file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpFile.Close()
+
+	cmd := exec.Command("bash", append([]string{tmpFile.Name()}, args...)...)
+	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe)
@@ -1275,3 +1289,4 @@ func runGeminiAgent(args []string) {
 		os.Exit(1)
 	}
 }
+
