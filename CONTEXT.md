@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Reduced tmux 'Enter' key delay from 500ms to 200ms for faster interaction while maintaining reliability.
 - Improved `tmux` mode reliability by increasing the delay before sending the `Enter` key to 500ms and using the `-l` (literal) flag for `send-keys` to ensure message content is delivered exactly as-is.
 - Fixed a bug in `gemini-agent` where `gemini` was being backgrounded, causing it to lose its TTY connection and fail with "no input provided via stdin"; the script now runs `gemini` in the foreground.
 - Simplified agent restart logic: replaced UNIX signal-based coordination with a local `.gemini-agent.restart` file. The `push` client now writes the restart mode ("fresh" or "resume") to this file and sends `/exit` to the `gemini-cli` tmux pane, allowing for a cleaner and more robust restart loop in the `gemini-agent` script.
