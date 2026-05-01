@@ -81,11 +81,7 @@ while true; do
     PUSH_PID=$!
 
     # Start gemini-cli by resuming the established session
-    gemini --resume latest "${GEMINI_ARGS[@]}" &
-    GEMINI_PID=$!
-
-    # Wait for Gemini to finish
-    wait $GEMINI_PID
+    gemini --resume latest "${GEMINI_ARGS[@]}"
     EXIT_CODE=$?
 
     # Cleanup push client
