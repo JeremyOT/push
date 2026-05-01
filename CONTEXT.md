@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Embedded the `gemini-agent` bash script into the `push` binary using `go:embed` and added a `--agent` flag to execute it directly.
+- Updated `gemini-agent` to support a `PUSH_BINARY` environment variable, ensuring the embedded script uses the correct `push` executable.
 - Reduced tmux 'Enter' key delay from 500ms to 200ms for faster interaction while maintaining reliability.
 - Improved `tmux` mode reliability by increasing the delay before sending the `Enter` key to 500ms and using the `-l` (literal) flag for `send-keys` to ensure message content is delivered exactly as-is.
 - Fixed a bug in `gemini-agent` where `gemini` was being backgrounded, causing it to lose its TTY connection and fail with "no input provided via stdin"; the script now runs `gemini` in the foreground.

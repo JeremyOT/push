@@ -38,8 +38,8 @@ else
     exit 1
 fi
 
-PUSH_CMD="push"
-if [ -f "./push" ]; then
+PUSH_CMD="${PUSH_BINARY:-push}"
+if [ -z "$PUSH_BINARY" ] && [ -f "./push" ]; then
     PUSH_CMD="./push"
 fi
 

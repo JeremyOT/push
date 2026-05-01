@@ -63,14 +63,14 @@ You can send a quick message without starting the server or a persistent CLI ses
 Gemini Agent Integration
 ------------------------
 
-The `gemini-agent` script provides a seamless way to connect a `gemini-cli` session to the Push app for real-time 2-way communication.
+The `push` binary includes the `gemini-agent` logic embedded directly, providing a seamless way to connect a `gemini-cli` session to the Push app for real-time 2-way communication.
 
 ### Usage
 
-Run the script from within a `tmux` session:
+Run the agent from within a `tmux` session:
 
 ```bash
-./gemini-agent [session-name] [--resume] [--yolo]
+./push --agent [session-name] [--resume] [--yolo]
 ```
 
 *   **`session-name`**: (Optional) A display name for the session. Defaults to the current directory name.
@@ -79,7 +79,7 @@ Run the script from within a `tmux` session:
 
 ### How it Works
 
-1.  **Background Client**: It starts a `push` client in the background configured with a shared `session_id`.
+1.  **Background Client**: It starts a `push` client in the background (using the same `push` binary) configured with a shared `session_id`.
 2.  **2-Way Communication**: 
     *   **Outgoing**: Messages you type in the Push web UI are automatically forwarded to your active `tmux` pane.
     *   **Incoming**: Model responses are captured via hooks (`aftermodel.py`, `afteragent.py`) and sent to the Push app.

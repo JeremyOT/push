@@ -34,6 +34,9 @@ import (
 //go:embed static/*
 var staticFS embed.FS
 
+//go:embed gemini-agent
+var geminiAgentScript string
+
 type Interaction struct {
 	ID              int64     `json:"id"`
 	Identifier      string    `json:"identifier,omitempty"`
@@ -113,7 +116,13 @@ func main() {
 	sessionName := flag.String("session-name", "", "Session name (display title) for the CLI service")
 	sessionPath := flag.String("session-path", "", "Working directory path for the CLI service")
 	modelName := flag.String("model", "", "Model name for the CLI service")
+	agent := flag.Bool("agent", false, "Run the embedded gemini-agent script")
 	flag.Parse()
+
+	if *agent {
+		runGeminiAgent(flag.Args())
+		return
+	}
 
 	if *cliService != "" {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -314,10 +323,10 @@ func loadCustomIcons(path string) error {
 	}
 
 	sizes := map[string]int{
-		"icon-128.png":          128,
-		"icon-192.png":          192,
-		"icon.png":              512,
-		"apple-touch-icon.png":  180,
+		"icon-128.png":         128,
+		"icon-192.png":         192,
+		"icon.png":             512,
+		"apple-touch-icon.png": 180,
 	}
 
 	for name, size := range sizes {
@@ -578,7 +587,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			// For quiet, we might want to update it. aftermodel.py sends it.
 			// If it's missing in the update request, we might want to keep it.
 			// But how to detect if it's missing? We can't easily with the current struct.
-			// Let's just merge it if it was not in the request? 
+			// Let's just merge it if it was not in the request?
 			// For now, let's just make sure we are not accidentally clearing it if it was true.
 			if !i.Quiet && existingQuiet {
 				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
@@ -780,7 +789,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 			if len(params) > 0 {
 				url += "?" + strings.Join(params, "&")
 			}
-			
+
 			req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
@@ -1243,4 +1252,26 @@ func sendPushNotifications(db *sql.DB, title, message, link string) {
 		}
 	}
 	log.Printf("Processed %d subscriptions", count)
+}
+
+func runGeminiAgent(args []string) {
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmd := exec.Command("bash", append([]string{"-s", "--"}, args...)...)
+	cmd.Stdin = strings.NewReader(geminiAgentScript)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe)
+
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			os.Exit(exitErr.ExitCode())
+		}
+		fmt.Fprintf(os.Stderr, "Error running gemini-agent: %v\n", err)
+		os.Exit(1)
+	}
 }
