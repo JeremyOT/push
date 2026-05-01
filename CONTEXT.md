@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented explicit signal handling in `--gemini-agent` mode to ensure the parent `push` process waits for the embedded agent script to clean up after receiving `SIGINT` (Ctrl+C) or `SIGTERM`, preventing orphaned background processes.
 - Renamed the agent flag to `--gemini-agent` and updated the implementation to use a temporary script file, ensuring `stdin`, `stdout`, and `stderr` are correctly passed through to the interactive `gemini-cli` session.
 - Embedded the `gemini-agent` bash script into the `push` binary using `go:embed` and added a `--gemini-agent` flag to execute it directly.
 - Updated `gemini-agent` to support a `PUSH_BINARY` environment variable, ensuring the embedded script uses the correct `push` executable.

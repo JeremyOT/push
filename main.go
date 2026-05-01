@@ -1281,7 +1281,32 @@ func runGeminiAgent(args []string) {
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe)
 
-	if err := cmd.Run(); err != nil {
+	// Handle signals to ensure we wait for the child process to exit and clean up
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting gemini-agent: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Wait for the command to finish in a goroutine so we can still catch signals
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case sig := <-sigChan:
+		// Forward the signal to the child process (though it likely already received it if in the same PGID)
+		_ = cmd.Process.Signal(sig)
+		// Wait for the process to actually exit
+		err = <-done
+	case err = <-done:
+		// Process exited on its own
+	}
+
+	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			os.Exit(exitErr.ExitCode())
 		}
