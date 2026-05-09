@@ -26,6 +26,16 @@ The application has been updated to support a client mode for sending messages d
     - `tmux`: Forwards user messages to a specified tmux pane. Can optionally specify a client ID using `tmux:client_id` to only process messages prefixed with `client_id ` or `client_id: `.
 - `-tmux-target`: Target tmux pane for `tmux` mode (e.g., session:window.pane).
 
+### Commands
+The following commands can be sent from the web UI to an active agent session:
+- `/run`: Execute the project deployment script (`./deploy.sh`).
+- `/restart`: Trigger a fresh restart of the gemini-agent.
+- `/restart resume`: Restart the gemini-agent and resume the current session.
+- `/new-agent [name]`: Start a new Gemini agent session in a subdirectory named `name` (relative to the current session path).
+- `/clear`: Clear the agent's context.
+- `/memory reload`: Reload memory and instructions.
+- `/compress`: Compress conversation history.
+
 ## API Endpoints
 - `GET /interactions`: Fetch messages (supports `after`, `before`, and `limit` parameters).
 - `POST /interactions`: Send a new message.
@@ -109,8 +119,9 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
-- Updated `main.go` to support `--resume` and `--yolo` flags, which are now correctly passed through to the embedded `gemini-agent` script when running in `--gemini-agent` mode.
-- Fixed a bug where `--resume` and `--yolo` flags were not recognized by the `push` binary, preventing them from being used with the embedded agent.
+- Implemented the `/new-agent [name]` command in the `tmux` mode CLI client, allowing users to spawn new agent sessions in subdirectories directly from the web UI.
+- Started a new Gemini agent session in the `hooks` subdirectory using a dedicated tmux window (`hooks-agent`) and a fresh session ID.
+- Built the `push` binary with optimized flags (`-w -s`) to support agent integration.
 - Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.
 - Enhanced the sidebar footer: agent icons now only show for currently active or pinned agents, and each icon includes a status dot reflecting the most urgent state of its associated sessions.
 - Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.

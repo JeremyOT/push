@@ -932,6 +932,40 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						}
 
 						if strings.HasPrefix(msg, "/new-agent") {
+							parts := strings.Fields(msg)
+							target := ""
+							if len(parts) > 1 {
+								target = parts[1]
+							}
+
+							exe, _ := os.Executable()
+							windowName := target
+							if windowName == "" {
+								windowName = filepath.Base(sessionPath)
+							}
+							windowName += "-agent"
+
+							newPath := sessionPath
+							if target != "" {
+								p := target
+								if !filepath.IsAbs(p) {
+									p = filepath.Join(sessionPath, p)
+								}
+								if info, err := os.Stat(p); err == nil && info.IsDir() {
+									newPath = p
+								}
+							}
+
+							args := []string{"new-window", "-n", windowName, "-c", newPath, "--", exe, "--address", address, "--gemini-agent"}
+							if target != "" {
+								// If target was a path, use the base name for the agent name
+								args = append(args, filepath.Base(target))
+							}
+
+							cmd := exec.Command("tmux", args...)
+							if err := cmd.Run(); err != nil {
+								fmt.Fprintf(stderr, "\rFailed to start new agent: %v\n", err)
+							}
 							continue
 						}
 
