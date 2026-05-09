@@ -969,9 +969,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 								// If target was a path, use the base name for the agent name
 								args = append(args, filepath.Base(target))
 							}
-							if yolo {
-								args = append(args, "--yolo")
-							}
+							args = append(args, "--yolo")
 
 							cmd := exec.Command("tmux", args...)
 							if err := cmd.Run(); err != nil {

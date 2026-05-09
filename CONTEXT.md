@@ -119,6 +119,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Updated the `/new-agent` command to always start new agents with the `--yolo` flag enabled, ensuring automated responses by default.
 - Created the `agent-setup` directory to organize agent configuration and setup materials.
 - Implemented the `/new-agent [name]` command in the `tmux` mode CLI client, allowing users to spawn new agent sessions in subdirectories directly from the web UI.
 - Started a new Gemini agent session in the `hooks` subdirectory using a dedicated tmux window (`hooks-agent`) and a fresh session ID.
