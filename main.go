@@ -143,7 +143,7 @@ func main() {
 			<-sigChan
 			cancel()
 		}()
-		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, os.Stdin, os.Stdout, os.Stderr)
+		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, *yoloAgent, os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 
@@ -640,8 +640,8 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		go sendPushNotifications(db, i.Title, i.Message, i.Link)
 	}
 
-	// Handle /new-agent command
-	if i.IsUser && strings.HasPrefix(i.Message, "/new-agent") {
+	// Handle global /new-agent command
+	if i.IsUser && i.SessionID == "" && strings.HasPrefix(i.Message, "/new-agent") {
 		go func() {
 			args := strings.Fields(i.Message)
 			subdir := "."
@@ -670,10 +670,10 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				log.Printf("Failed to start new agent: %v (Command: %s)", err, cmdStr)
 				// Broadcast a status message about the failure
 				broadcaster.Broadcast(Interaction{
-					Title:   "System",
-					Message: fmt.Sprintf("Failed to start new agent in %s: %v", subdir, err),
-					Status:  "err",
-					Agent:   "remote",
+					Title:     "System",
+					Message:   fmt.Sprintf("Failed to start new agent in %s: %v", subdir, err),
+					Status:    "err",
+					Agent:     "remote",
 					Timestamp: time.Now().UTC(),
 				})
 			}
@@ -754,7 +754,7 @@ func isTerminal(r io.Reader) bool {
 	return false
 }
 
-func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, sessionPath string, model string, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
+func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, sessionPath string, model string, yolo bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
 		clientID = strings.TrimPrefix(mode, "tmux:")
@@ -930,7 +930,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							msg = "/exit"
 						}
 
-						if strings.HasPrefix(msg, "/new-agent") {
+						if strings.HasPrefix(msg, "/new-agent") && i.SessionID != "" && i.SessionID == sessionID {
 							parts := strings.Fields(msg)
 							target := ""
 							if len(parts) > 1 {
@@ -959,6 +959,9 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							if target != "" {
 								// If target was a path, use the base name for the agent name
 								args = append(args, filepath.Base(target))
+							}
+							if yolo {
+								args = append(args, "--yolo")
 							}
 
 							cmd := exec.Command("tmux", args...)
