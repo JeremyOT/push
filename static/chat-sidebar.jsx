@@ -131,15 +131,25 @@ function SidebarTree({ threads, activeId, theme, onSelect, depth = 0, statusOver
     }
   });
 
-  const renderNode = (t, d) => (
-    <React.Fragment key={t.id}>
-      <SidebarThreadRow 
-        thread={statusOverride ? { ...t, status: statusOverride } : t} 
-        active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} depth={d} 
-      />
-      {childrenMap[t.id] && childrenMap[t.id].map(c => renderNode(c, d + 1))}
-    </React.Fragment>
-  );
+  const renderNode = (t, d) => {
+    // If we have a global override, use it.
+    // Otherwise, if we are in the "Active" section but this specific thread isn't explicitly active
+    // (meaning it's only here because a descendant is active), override its status to passive.
+    let nodeStatusOverride = statusOverride;
+    if (!nodeStatusOverride && !t.active) {
+        nodeStatusOverride = 'passive';
+    }
+
+    return (
+      <React.Fragment key={t.id}>
+        <SidebarThreadRow 
+          thread={nodeStatusOverride ? { ...t, status: nodeStatusOverride } : t} 
+          active={t.id === activeId} theme={theme} onClick={() => onSelect(t.id)} depth={d} 
+        />
+        {childrenMap[t.id] && childrenMap[t.id].map(c => renderNode(c, d + 1))}
+      </React.Fragment>
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -286,7 +296,7 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
           }
         </div>
         <div style={{ flex: 1, fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted, letterSpacing: 0.3 }}>
-          {activeThreads.length} active · {activeThreads.filter(t => t.status === 'awaiting' || t.status === 'ready' || t.status === 'idle').length} ready
+          {activeThreads.length} active · {activeThreads.filter(t => t.active && (t.status === 'awaiting' || t.status === 'ready' || t.status === 'idle')).length} ready
         </div>
       </div>
     </div>
