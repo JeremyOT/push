@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Deployed the latest version of the application using `./deploy.sh`.
 - Fixed status inconsistency in the sidebar: sessions that are only "active" because of descendant sessions (hierarchical grouping) now correctly show as "passive" (grey dot) if they are not explicitly connected.
 - Refined the "ready" agent count in the sidebar footer to only include sessions that are both currently active and in a ready state.
 - Started a new Gemini agent session in the `hooks` subdirectory using a dedicated tmux window (`hooks-agent`) and a fresh session ID.
