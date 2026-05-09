@@ -147,6 +147,7 @@ go build -ldflags="-w -s" -o push main.go
 - Fixed a bug where the `/new-agent` command was double-creating agents by coordinating its handling between the server and CLI clients:
     - The server now handles `/new-agent` exclusively for global messages (Main Feed).
     - CLI clients now handle `/new-agent` exclusively for messages matching their specific `session_id`.
+- Updated `runCliClient` to support passing through the `--yolo` flag to newly created agents.
 - Refined the `/service` stream filtering to ensure consistent message delivery while preventing redundant command execution.
 - Fixed a bug where message statuses and content were not properly updating inline when upserted via the `aftermodel` hook; set `replace: true` in the hook and improved backend field merging.
 - Fixed sidebar status display: the "ready" status now appears for worker threads, while all status indicators are hidden for the "Main Feed" thread.
