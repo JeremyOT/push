@@ -141,6 +141,9 @@ go build -ldflags="-w -s" -o push main.go
 - Enhanced the sidebar footer: agent icons are now interactive and select the corresponding thread when clicked.
 - Improved `aftermodel` hook to skip sending empty notifications (avoiding "prefix:"-only messages) and ensuring final status updates don't accidentally clear accumulated message content.
 - Improved session activity tracking: the CLI client now re-registers with the server immediately upon establishing a successful connection (including reconnections), ensuring active sessions are correctly displayed in the web UI even after a server restart.
+- Updated `/new-agent` command to use `tmux split-window -h` instead of `new-window`, creating a new pane for the agent in the current window.
+- Enhanced `gemini-agent` script to run its background push client in a separate tmux pane (bottom 20%) using `split-window -v`, completely isolating `stdin` for the foreground Gemini session and preventing competing inputs.
+- Modified `main.go` to handle `/new-agent` by splitting the current window or target pane, ensuring a more integrated and isolated tmux workflow.
 - Fixed a bug where message statuses and content were not properly updating inline when upserted via the `aftermodel` hook; set `replace: true` in the hook and improved backend field merging.
 - Fixed sidebar status display: the "ready" status now appears for worker threads, while all status indicators are hidden for the "Main Feed" thread.
 - Fixed top bar status display in `ChatHeader`: status indicators are now hidden for the "Main Feed" thread and dynamically update for worker threads.
