@@ -639,6 +639,48 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	if !i.IsUser && !i.Quiet && !i.Update {
 		go sendPushNotifications(db, i.Title, i.Message, i.Link)
 	}
+
+	// Handle /new-agent command
+	if i.IsUser && strings.HasPrefix(i.Message, "/new-agent") {
+		go func() {
+			args := strings.Fields(i.Message)
+			subdir := "."
+			if len(args) > 1 {
+				subdir = args[1]
+			}
+
+			exe, err := os.Executable()
+			if err != nil {
+				log.Printf("Failed to get executable path: %v", err)
+				return
+			}
+			exe, _ = filepath.Abs(exe)
+
+			cwd, _ := os.Getwd()
+			fullPath := filepath.Join(cwd, subdir)
+			name := filepath.Base(fullPath)
+			if subdir == "." || subdir == "" {
+				name = "agent"
+			}
+
+			// We use tmux new-window to start the new agent.
+			// This assumes the server has access to a tmux session.
+			cmdStr := fmt.Sprintf("cd %s && %s --gemini-agent %s --yolo", fullPath, exe, name)
+			cmd := exec.Command("tmux", "new-window", "-n", name, cmdStr)
+			if err := cmd.Run(); err != nil {
+				log.Printf("Failed to start new agent: %v (Command: %s)", err, cmdStr)
+				// Broadcast a status message about the failure
+				broadcaster.Broadcast(Interaction{
+					Title:   "System",
+					Message: fmt.Sprintf("Failed to start new agent in %s: %v", subdir, err),
+					Status:  "err",
+					Agent:   "remote",
+					Timestamp: time.Now().UTC(),
+				})
+			}
+		}()
+	}
+
 	// Broadcast for streaming to all clients
 	broadcaster.Broadcast(*i)
 	return nil
@@ -887,6 +929,10 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							}
 							_ = os.WriteFile(".gemini-agent.restart", []byte(mode), 0644)
 							msg = "/exit"
+						}
+
+						if strings.HasPrefix(msg, "/new-agent") {
+							continue
 						}
 
 						// Send the message

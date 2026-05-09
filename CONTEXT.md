@@ -41,6 +41,7 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented `/new-agent` command in the web UI (command palette) and backend; allows launching new Gemini agents in specified subdirectories using `tmux new-window`.
 - Refined sidebar grouping: the "Active" section now ONLY contains explicitly connected sessions (`active: true`).
 - Passive sessions (even if they are parents of active sessions) now correctly move to the "Recent" section, provided they have activity within the last 24 hours.
 - Deployed the latest version of the application using `./deploy.sh`.

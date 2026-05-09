@@ -136,8 +136,9 @@ const PALETTE_ITEMS = [
   { id: 'p5', cmd: '/clear', label: 'Clear context', desc: 'Start a fresh conversation (resets context)', icon: 'terminal' },
   { id: 'p6', cmd: '/memory reload', label: 'Reload memory', desc: 'Force refresh of memory and instructions', icon: 'refresh' },
   { id: 'p7', cmd: '/compress', label: 'Compress history', desc: 'Summarize history to save tokens', icon: 'sparkle' },
-  { id: 'p8', cmd: '/restart', label: 'Restart fresh', desc: 'Restart Gemini-agent with a new session', icon: 'refresh' },
-  { id: 'p9', cmd: '/restart resume', label: 'Restart resume', desc: 'Restart Gemini-agent and resume current session', icon: 'refresh' },
+  { id: 'p8', cmd: '/new-agent', label: 'New agent', desc: 'Start a new Gemini agent (optional: subdir)', icon: 'plus' },
+  { id: 'p9', cmd: '/restart', label: 'Restart fresh', desc: 'Restart Gemini-agent with a new session', icon: 'refresh' },
+  { id: 'p10', cmd: '/restart resume', label: 'Restart resume', desc: 'Restart Gemini-agent and resume current session', icon: 'refresh' },
 ];
 
 function CommandPalette({ theme, open, onClose, onPick }) {
