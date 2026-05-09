@@ -663,9 +663,9 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				name = "agent"
 			}
 
-			// We use tmux split-window to start the new agent in a new pane.
-			cmdStr := fmt.Sprintf("%s --gemini-agent %s --yolo", exe, name)
-			cmd := exec.Command("tmux", "split-window", "-h", "-c", fullPath, cmdStr)
+			// We use tmux new-window to start the new agent.
+			cmdStr := fmt.Sprintf("cd %s && %s --gemini-agent %s --yolo", fullPath, exe, name)
+			cmd := exec.Command("tmux", "new-window", "-n", name, cmdStr)
 			if err := cmd.Run(); err != nil {
 				log.Printf("Failed to start new agent: %v (Command: %s)", err, cmdStr)
 				// Broadcast a status message about the failure
@@ -955,11 +955,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 								}
 							}
 
-							args := []string{"split-window", "-h", "-c", newPath}
-							if tmuxTarget != "" {
-								args = append(args, "-t", tmuxTarget)
-							}
-							args = append(args, "--", exe, "--address", address, "--gemini-agent")
+							args := []string{"new-window", "-n", windowName, "-c", newPath, "--", exe, "--address", address, "--gemini-agent"}
 							if target != "" {
 								// If target was a path, use the base name for the agent name
 								args = append(args, filepath.Base(target))

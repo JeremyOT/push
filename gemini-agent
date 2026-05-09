@@ -71,22 +71,23 @@ while true; do
         echo "Started session: $SESSION_ID"
     fi
 
-    # Start push client in a separate pane to avoid competing for stdin
-    # We use -d to keep focus on the current pane (for gemini)
-    # We use -P and -F '#{pane_id}' to get the new pane ID for cleanup
-    PUSH_PANE_ID=$(tmux split-window -v -d -p 20 -P -F '#{pane_id}' "$PUSH_CMD --cli-service tmux \
-        --session-id \"$SESSION_ID\" \
-        --session-name \"$SESSION_NAME\" \
-        --session-path \"$SESSION_PATH\" \
+    # Start push client in the background
+    # It runs in the same pane to correctly detect it and receive input
+    $PUSH_CMD --cli-service tmux \
+        --session-id "$SESSION_ID" \
+        --session-name "$SESSION_NAME" \
+        --session-path "$SESSION_PATH" \
         --model gemini \
-        --tmux-target \"$TMUX_TARGET\"")
+        --tmux-target "$TMUX_TARGET" &
+    PUSH_PID=$!
 
     # Start gemini-cli by resuming the established session
     gemini --resume latest "${GEMINI_ARGS[@]}"
     EXIT_CODE=$?
 
-    # Cleanup push client pane
-    tmux kill-pane -t "$PUSH_PANE_ID" 2>/dev/null
+    # Cleanup push client
+    kill $PUSH_PID 2>/dev/null
+    wait $PUSH_PID 2>/dev/null
     
     # Handle restart requests
     if [ -f "$RESTART_FILE" ]; then
