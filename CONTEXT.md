@@ -41,6 +41,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Refined sidebar grouping: the "Active" section now ONLY contains explicitly connected sessions (`active: true`).
+- Passive sessions (even if they are parents of active sessions) now correctly move to the "Recent" section, provided they have activity within the last 24 hours.
 - Deployed the latest version of the application using `./deploy.sh`.
 - Fixed status inconsistency in the sidebar: sessions that are only "active" because of descendant sessions (hierarchical grouping) now correctly show as "passive" (grey dot) if they are not explicitly connected.
 - Refined the "ready" agent count in the sidebar footer to only include sessions that are both currently active and in a ready state.
@@ -100,7 +102,7 @@ go build -ldflags="-w -s" -o push main.go
 - Fixed several `main_test.go` failures by updating `runCliClient` calls to match the current function signature.
 ## Project Conventions
 - The `/run` command is reserved for triggering the project deployment: whenever the user sends `/run`, the agent should execute `./deploy.sh`.
-- **Sidebar Session Management:** An active agent/session should NEVER appear in the "Recent" list. If a session is active (or has active descendants), it must be in the "Active" section.
+- **Sidebar Session Management:** The "Active" section strictly contains connected sessions. Hierarchical parents of active sessions move to the "Recent" section if they are not themselves connected.
 - **Inactive Session Status:** Sessions in the "Recent" list must always show as "passive" with a grey dot, regardless of their last message status.
 - **Session Metadata Inheritance:** The backend automatically fills missing `session_path`, `agent`, and `title` for new interactions if a `session_id` is provided, inheriting from the most recent record with that ID.
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).

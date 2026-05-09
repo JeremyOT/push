@@ -164,25 +164,9 @@ function Sidebar({ theme, threads, activeId, onSelect, onClose, onOpenPalette, d
 
   const mainFeed = threads.find(t => t.id === 't1');
   
-  // Calculate effective activity: a thread is active if it is explicitly active 
-  // or if any of its descendants in the current threads list are active.
-  const activeIds = new Set(threads.filter(t => t.active).map(t => t.id));
-  threads.forEach(t => {
-      if (t.active && t.sessionPath) {
-          threads.forEach(p => {
-              if (t.id === p.id) return;
-              const path = t.sessionPath || '';
-              const pPath = p.sessionPath || '';
-              if (pPath && path.startsWith(pPath) && path !== pPath && path[pPath.length] === '/') {
-                  activeIds.add(p.id);
-              }
-          });
-      }
-  });
-
-  const activeThreads = threads.filter(t => t.id !== 't1' && activeIds.has(t.id));
+  const activeThreads = threads.filter(t => t.id !== 't1' && t.active);
   const recentThreads = threads.filter(t => {
-    if (t.id === 't1' || activeIds.has(t.id)) return false;
+    if (t.id === 't1' || t.active) return false;
     const ts = typeof t.lastTimestamp === 'string' ? new Date(t.lastTimestamp).getTime() : t.lastTimestamp;
     if (!ts || isNaN(ts)) return false;
     return (now - ts) < oneDay;
