@@ -144,6 +144,7 @@ go build -ldflags="-w -s" -o push main.go
 - Restored `/new-agent` command to use `tmux new-window`, allowing it to spawn new agent sessions in dedicated windows as originally intended.
 - Reverted `gemini-agent` script to run the background push client in the same pane (backgrounded) to ensure it correctly detects the active pane and receives shared `stdin` input for 2-way communication.
 - Modified `main.go` to support spawning new agent sessions via `tmux new-window` from both the web UI and the CLI client.
+- Improved `/new-agent` command UX: the initiating agent now sends a confirmation message with a "ready" status (`r`) upon successful agent creation, ensuring the UI transitions out of the "working" state and provides clear feedback.
 - Fixed a bug where the `/new-agent` command was double-creating agents by coordinating its handling between the server and CLI clients:
     - The server now handles `/new-agent` exclusively for global messages (Main Feed).
     - CLI clients now handle `/new-agent` exclusively for messages matching their specific `session_id`.

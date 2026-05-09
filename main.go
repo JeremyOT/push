@@ -676,6 +676,15 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 					Agent:     "remote",
 					Timestamp: time.Now().UTC(),
 				})
+			} else {
+				// Broadcast a status message about the success to clear "working" state
+				broadcaster.Broadcast(Interaction{
+					Title:     "System",
+					Message:   fmt.Sprintf("Started new agent in %s", subdir),
+					Status:    "r",
+					Agent:     "remote",
+					Timestamp: time.Now().UTC(),
+				})
 			}
 		}()
 	}
@@ -967,6 +976,22 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							cmd := exec.Command("tmux", args...)
 							if err := cmd.Run(); err != nil {
 								fmt.Fprintf(stderr, "\rFailed to start new agent: %v\n", err)
+							} else {
+								// Send confirmation message to clear "working" status
+								conf := Interaction{
+									SessionID: sessionID,
+									Title:     sessionName,
+									Message:   fmt.Sprintf("Started new agent: %s", windowName),
+									Status:    "r",
+									Agent:     "remote",
+								}
+								data, _ := json.Marshal(conf)
+								req, _ := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("http://%s/service?stream=false", address), bytes.NewReader(append(data, '\n')))
+								req.Header.Set("Content-Type", "application/x-ndjson")
+								resp, err := http.DefaultClient.Do(req)
+								if err == nil {
+									resp.Body.Close()
+								}
 							}
 							continue
 						}
