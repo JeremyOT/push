@@ -1156,62 +1156,10 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 	}
 
 	// Initial registration
-	sendMsg("Connected to Hermes Agent API Proxy", "session-register", "hermes", "r", "")
+	sendMsg("Connected to Hermes Agent API Proxy (Standard OpenAI Mode)", "session-register", "hermes", "r", "")
 
-	// 1. Listen for user messages from Push to forward to Hermes
-	go func() {
-		var lastTimestamp time.Time
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			url := fmt.Sprintf("http://%s/service?session_id=%s", pushAddress, sessionID)
-			if !lastTimestamp.IsZero() {
-				url += "&timestamp=" + lastTimestamp.Format(time.RFC3339)
-			}
-			req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				time.Sleep(2 * time.Second)
-				continue
-			}
-
-			dec := json.NewDecoder(resp.Body)
-			for {
-				var i Interaction
-				if err := dec.Decode(&i); err != nil {
-					resp.Body.Close()
-					break
-				}
-				if i.ID == 0 {
-					continue
-				}
-				if i.Timestamp.After(lastTimestamp) {
-					lastTimestamp = i.Timestamp
-				}
-
-				if i.IsUser && i.Message != "" {
-					// Forward to Hermes
-					go func(msg string) {
-						payload, _ := json.Marshal(map[string]string{"message": msg})
-						hResp, err := http.Post(hermesURL, "application/json", bytes.NewReader(payload))
-						if err != nil {
-							sendMsg("Error connecting to Hermes: "+err.Error(), sessionName, "hermes", "err", "")
-							return
-						}
-						hResp.Body.Close()
-					}(i.Message)
-				}
-			}
-			time.Sleep(1 * time.Second)
-		}
-	}()
-
-	// 2. Listen for SSE from Hermes
-	backoff := 1 * time.Second
+	// Listen for user messages from Push to forward to Hermes
+	var lastTimestamp time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -1219,83 +1167,130 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 		default:
 		}
 
-		req, _ := http.NewRequestWithContext(ctx, "GET", hermesURL, nil)
-		req.Header.Set("Accept", "text/event-stream")
+		url := fmt.Sprintf("http://%s/service?session_id=%s", pushAddress, sessionID)
+		if !lastTimestamp.IsZero() {
+			url += "&timestamp=" + lastTimestamp.Format(time.RFC3339)
+		}
+		req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			time.Sleep(backoff)
-			if backoff < 30*time.Second {
-				backoff *= 2
-			}
+			time.Sleep(2 * time.Second)
 			continue
 		}
-		backoff = 1 * time.Second
 
-		scanner := bufio.NewScanner(resp.Body)
-		var currentID string
-		var currentMsg string
-		var eventType string
-
-		for scanner.Scan() {
-			line := scanner.Text()
-			if line == "" {
-				eventType = ""
+		dec := json.NewDecoder(resp.Body)
+		for {
+			var i Interaction
+			if err := dec.Decode(&i); err != nil {
+				resp.Body.Close()
+				break
+			}
+			if i.ID == 0 {
 				continue
 			}
-
-			if strings.HasPrefix(line, "event: ") {
-				eventType = strings.TrimPrefix(line, "event: ")
-				continue
+			if i.Timestamp.After(lastTimestamp) {
+				lastTimestamp = i.Timestamp
 			}
 
-			if strings.HasPrefix(line, "data: ") {
-				data := strings.TrimPrefix(line, "data: ")
-				if data == "[DONE]" {
-					if currentID != "" {
-						sendMsg(currentMsg, sessionName, "hermes", "r", currentID)
+			if i.IsUser && i.Message != "" {
+				// Forward to Hermes using standard OpenAI streaming pattern
+				go func(userMsg Interaction) {
+					// 1. Prepare OpenAI-compatible request
+					payload := map[string]interface{}{
+						"model":  "hermes-agent",
+						"stream": true,
+						"messages": []map[string]string{
+							{"role": "user", "content": userMsg.Message},
+						},
 					}
-					currentID = ""
-					currentMsg = ""
-					continue
-				}
-
-				if eventType == "hermes.tool.progress" {
-					var progress struct {
-						Tool   string `json:"tool"`
-						Input  string `json:"input"`
-						Status string `json:"status"`
+					jsonData, _ := json.Marshal(payload)
+					
+					hReq, err := http.NewRequestWithContext(ctx, "POST", hermesURL, bytes.NewReader(jsonData))
+					if err != nil {
+						sendMsg("Error creating Hermes request: "+err.Error(), sessionName, "hermes", "err", "")
+						return
 					}
-					if err := json.Unmarshal([]byte(data), &progress); err == nil {
-						msg := fmt.Sprintf("🔧 **%s**: `%s` (%s)", progress.Tool, progress.Input, progress.Status)
-						sendMsg(msg, sessionName, "hermes", "w", "")
+					hReq.Header.Set("Content-Type", "application/json")
+					hReq.Header.Set("Accept", "text/event-stream")
+
+					hResp, err := http.DefaultClient.Do(hReq)
+					if err != nil {
+						sendMsg("Error connecting to Hermes: "+err.Error(), sessionName, "hermes", "err", "")
+						return
 					}
-					continue
-				}
+					defer hResp.Body.Close()
 
-				// Try to parse as OpenAI-compatible chunk
-				var chunk struct {
-					Choices []struct {
-						Delta struct {
-							Content string `json:"content"`
-						} `json:"delta"`
-					} `json:"choices"`
-				}
+					if hResp.StatusCode != http.StatusOK {
+						body, _ := io.ReadAll(hResp.Body)
+						sendMsg(fmt.Sprintf("Hermes API error (%d): %s", hResp.StatusCode, string(body)), sessionName, "hermes", "err", "")
+						return
+					}
 
-				if err := json.Unmarshal([]byte(data), &chunk); err == nil && len(chunk.Choices) > 0 {
-					if chunk.Choices[0].Delta.Content != "" {
-						if currentID == "" {
-							currentID = fmt.Sprintf("hermes-sse-%d", time.Now().UnixNano())
+					// 2. Parse SSE response from the POST request
+					scanner := bufio.NewScanner(hResp.Body)
+					var currentID string
+					var currentMsg string
+					var eventType string
+
+					for scanner.Scan() {
+						line := scanner.Text()
+						if line == "" {
+							eventType = ""
+							continue
 						}
-						currentMsg += chunk.Choices[0].Delta.Content
-						sendMsg(currentMsg, sessionName, "hermes", "w", currentID)
+
+						if strings.HasPrefix(line, "event: ") {
+							eventType = strings.TrimPrefix(line, "event: ")
+							continue
+						}
+
+						if strings.HasPrefix(line, "data: ") {
+							data := strings.TrimPrefix(line, "data: ")
+							if data == "[DONE]" {
+								if currentID != "" {
+									sendMsg(currentMsg, sessionName, "hermes", "r", currentID)
+								}
+								currentID = ""
+								currentMsg = ""
+								continue
+							}
+
+							if eventType == "hermes.tool.progress" {
+								var progress struct {
+									Tool   string `json:"tool"`
+									Input  string `json:"input"`
+									Status string `json:"status"`
+								}
+								if err := json.Unmarshal([]byte(data), &progress); err == nil {
+									msg := fmt.Sprintf("🔧 **%s**: `%s` (%s)", progress.Tool, progress.Input, progress.Status)
+									sendMsg(msg, sessionName, "hermes", "w", "")
+								}
+								continue
+							}
+
+							// Try to parse as OpenAI-compatible chunk
+							var chunk struct {
+								Choices []struct {
+									Delta struct {
+										Content string `json:"content"`
+									} `json:"delta"`
+								} `json:"choices"`
+							}
+
+							if err := json.Unmarshal([]byte(data), &chunk); err == nil && len(chunk.Choices) > 0 {
+								if chunk.Choices[0].Delta.Content != "" {
+									if currentID == "" {
+										currentID = fmt.Sprintf("hermes-sse-%d", time.Now().UnixNano())
+									}
+									currentMsg += chunk.Choices[0].Delta.Content
+									sendMsg(currentMsg, sessionName, "hermes", "w", currentID)
+								}
+							}
+						}
 					}
-				} else {
-					// Generic data or raw text
-					sendMsg(data, sessionName, "hermes", "r", "")
-				}
+				}(i)
 			}
 		}
-		resp.Body.Close()
 		time.Sleep(1 * time.Second)
 	}
 }

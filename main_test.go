@@ -1170,19 +1170,22 @@ func TestHandleInteractionsLatestPerSession(t *testing.T) {
 }
 
 func TestRunHermesAgent(t *testing.T) {
-	// 1. Mock Hermes SSE Server
+	// 1. Mock Hermes Standard OpenAI Server
 	hermesReceivedMsg := make(chan string, 1)
 	hermesSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
-			var body map[string]string
-			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
-				hermesReceivedMsg <- body["message"]
-			}
-			w.WriteHeader(http.StatusOK)
+		if r.Method != "POST" {
+			t.Errorf("Expected POST request, got %s", r.Method)
 			return
 		}
 
-		// SSE
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+			msgs := body["messages"].([]interface{})
+			lastMsg := msgs[len(msgs)-1].(map[string]interface{})
+			hermesReceivedMsg <- lastMsg["content"].(string)
+		}
+
+		// Standard OpenAI SSE response
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -1230,7 +1233,7 @@ func TestRunHermesAgent(t *testing.T) {
 			data, _ := json.Marshal(i)
 			w.Write(append(data, '\n'))
 			flusher.Flush()
-			// Keep connection open but don't send more
+			// Keep connection open
 			<-r.Context().Done()
 			return
 		}
@@ -1297,4 +1300,5 @@ loop:
 		}
 	}
 }
+
 
