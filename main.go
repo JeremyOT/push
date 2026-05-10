@@ -715,8 +715,9 @@ func fillMissingMetadata(db *sql.DB, i *Interaction) {
 	var existingTitle string
 	var existingAgent string
 	var existingSessionPath string
-	// Try to find the most recent non-empty metadata for this session, excluding tmux status messages
-	err := db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND session_path != '' AND agent != 'tmux' ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+	systemTitles := "'session-register', 'session-active', 'session-inactive', 'tmux-service', 'heartbeat'"
+	// Try to find the most recent non-empty metadata for this session, excluding tmux status messages and system titles
+	err := db.QueryRow(fmt.Sprintf("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND session_path != '' AND agent != 'tmux' AND title NOT IN (%s) ORDER BY id DESC LIMIT 1", systemTitles), i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
 	if err == nil {
 		if i.SessionPath == "" {
 			i.SessionPath = existingSessionPath
@@ -730,7 +731,7 @@ func fillMissingMetadata(db *sql.DB, i *Interaction) {
 		}
 	} else {
 		// Try again without the session_path constraint if we still need title/agent
-		_ = db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND agent != 'tmux' AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent' AND title != 'Hermes Agent' AND title != 'Claude') ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+		_ = db.QueryRow(fmt.Sprintf("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND agent != 'tmux' AND title NOT IN (%s) AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent' AND title != 'Hermes Agent' AND title != 'Claude') ORDER BY id DESC LIMIT 1", systemTitles), i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
 		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude") {
 			i.Title = existingTitle
 		}

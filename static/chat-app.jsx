@@ -108,8 +108,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       else if (msg.title.endsWith(' - Working')) status = 'working';
     }
 
-    const systemTitles = ['session-register', 'session-active', 'session-inactive', 'tmux-service'];
-    if (systemTitles.includes(msg.title) || msg.agent === 'tmux') {
+    const systemTitles = ['session-register', 'session-active', 'session-inactive', 'tmux-service', 'heartbeat'];
+    if (!msg.identifier && (systemTitles.includes(msg.title) || msg.agent === 'tmux')) {
       return {
         ...base,
         kind: 'status',
