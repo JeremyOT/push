@@ -1168,3 +1168,133 @@ func TestHandleInteractionsLatestPerSession(t *testing.T) {
 		t.Errorf("Expected Main 2 for empty session, got %s", messages[""])
 	}
 }
+
+func TestRunHermesAgent(t *testing.T) {
+	// 1. Mock Hermes SSE Server
+	hermesReceivedMsg := make(chan string, 1)
+	hermesSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			var body map[string]string
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				hermesReceivedMsg <- body["message"]
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// SSE
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("Streaming not supported")
+			return
+		}
+
+		fmt.Fprintf(w, "data: {\"choices\": [{\"delta\": {\"content\": \"Hello \"}}]}\n\n")
+		flusher.Flush()
+		time.Sleep(50 * time.Millisecond)
+		fmt.Fprintf(w, "event: hermes.tool.progress\ndata: {\"tool\": \"shell\", \"input\": \"ls\", \"status\": \"running\"}\n\n")
+		flusher.Flush()
+		time.Sleep(50 * time.Millisecond)
+		fmt.Fprintf(w, "data: {\"choices\": [{\"delta\": {\"content\": \"World\"}}]}\n\n")
+		flusher.Flush()
+		time.Sleep(50 * time.Millisecond)
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer hermesSrv.Close()
+
+	// 2. Mock Push Server
+	pushReceivedMsgs := make(chan Interaction, 10)
+	pushSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/service" && r.Method == "POST" {
+			var i Interaction
+			if err := json.NewDecoder(r.Body).Decode(&i); err == nil {
+				pushReceivedMsgs <- i
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.URL.Path == "/service" && r.Method == "GET" {
+			// Serve a user message after a short delay
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				t.Error("Streaming not supported")
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+			i := Interaction{ID: 1, Message: "User Command", IsUser: true, SessionID: "hermes-test", Timestamp: time.Now()}
+			data, _ := json.Marshal(i)
+			w.Write(append(data, '\n'))
+			flusher.Flush()
+			// Keep connection open but don't send more
+			<-r.Context().Done()
+			return
+		}
+	}))
+	defer pushSrv.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// 3. Run Hermes Agent
+	pushAddr := strings.TrimPrefix(pushSrv.URL, "http://")
+	go runHermesAgent(ctx, hermesSrv.URL, pushAddr, "hermes-test", "Hermes Test Agent")
+
+	// 4. Verify interactions
+	var msgs []Interaction
+loop:
+	for {
+		select {
+		case m := <-pushReceivedMsgs:
+			msgs = append(msgs, m)
+			if len(msgs) >= 5 { // register, hello, shell progress, world, done(r)
+				break loop
+			}
+		case <-ctx.Done():
+			break loop
+		}
+	}
+
+	// Check user message forwarding
+	select {
+	case hMsg := <-hermesReceivedMsg:
+		if hMsg != "User Command" {
+			t.Errorf("Expected Hermes to receive 'User Command', got '%s'", hMsg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Timed out waiting for Hermes to receive message")
+	}
+
+	// Check parsing
+	foundHello := false
+	foundWorld := false
+	foundTool := false
+	foundDone := false
+
+	for _, m := range msgs {
+		if strings.Contains(m.Message, "Hello") {
+			foundHello = true
+		}
+		if strings.Contains(m.Message, "World") {
+			foundWorld = true
+		}
+		if strings.Contains(m.Message, "🔧 **shell**") {
+			foundTool = true
+		}
+		if m.Status == "r" && strings.Contains(m.Message, "Hello World") {
+			foundDone = true
+		}
+	}
+
+	if !foundHello || !foundWorld || !foundTool || !foundDone {
+		t.Errorf("Missing expected messages in proxy. Hello:%v, World:%v, Tool:%v, Done:%v", foundHello, foundWorld, foundTool, foundDone)
+		for i, m := range msgs {
+			t.Logf("Msg %d: %s (Status: %s, ID: %s)", i, m.Message, m.Status, m.Identifier)
+		}
+	}
+}
+

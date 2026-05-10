@@ -123,6 +123,7 @@ go build -ldflags="-w -s" -o push main.go
 - Refined the `/service` stream filtering and frontend message mapping to correctly identify system messages while ensuring real agent content (identified by stable identifiers) is displayed in full bubbles.
 - Added 'hermes' agent to the web UI with custom colors and icons for the Hermes Agent API proxy.
 - Added Hermes Agent API proxy support via the `--hermes-agent <url>` flag. This mode proxies messages between the Push server and a Hermes API using SSE for real-time updates and standard JSON POST for input.
+- Implemented `TestRunHermesAgent` to verify end-to-end Hermes proxy behavior, including user message forwarding, OpenAI-compatible SSE parsing, and Hermes-specific tool progress events.
 - Updated the `/new-agent` command to always start new agents with the `--yolo` flag enabled, ensuring automated responses by default.
 - Created the `agent-setup` directory to organize agent configuration and setup materials.
 - Implemented the `/new-agent [name]` command in the `tmux` mode CLI client, allowing users to spawn new agent sessions in subdirectories directly from the web UI.
