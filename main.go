@@ -715,8 +715,8 @@ func fillMissingMetadata(db *sql.DB, i *Interaction) {
 	var existingTitle string
 	var existingAgent string
 	var existingSessionPath string
-	// Try to find the most recent non-empty metadata for this session
-	err := db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND session_path != '' ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+	// Try to find the most recent non-empty metadata for this session, excluding tmux status messages
+	err := db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND session_path != '' AND agent != 'tmux' ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
 	if err == nil {
 		if i.SessionPath == "" {
 			i.SessionPath = existingSessionPath
@@ -725,13 +725,13 @@ func fillMissingMetadata(db *sql.DB, i *Interaction) {
 			i.Agent = existingAgent
 		}
 		// Only inherit title if current is generic
-		if i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" {
+		if i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude" {
 			i.Title = existingTitle
 		}
 	} else {
 		// Try again without the session_path constraint if we still need title/agent
-		_ = db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent') ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
-		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent") {
+		_ = db.QueryRow("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND agent != 'tmux' AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent' AND title != 'Hermes Agent' AND title != 'Claude') ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude") {
 			i.Title = existingTitle
 		}
 		if existingAgent != "" && (i.Agent == "" || i.Agent == "remote") {

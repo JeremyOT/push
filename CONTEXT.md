@@ -119,6 +119,9 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed a bug where real agent messages were incorrectly styled as grey status notes by preventing metadata inheritance from "tmux" status messages in the backend.
+- Added 'hermes' agent to the web UI with custom colors and icons for the Hermes Agent API proxy.
+- Refined the `/service` stream filtering and frontend message mapping to correctly identify system messages (`session-active`, `session-inactive`, `tmux-service`) while ensuring real agent content is displayed in full bubbles.
 - Added Hermes Agent API proxy support via the `--hermes-agent <url>` flag. This mode proxies messages between the Push server and a Hermes API using SSE for real-time updates and standard JSON POST for input.
 - Updated the `/new-agent` command to always start new agents with the `--yolo` flag enabled, ensuring automated responses by default.
 - Created the `agent-setup` directory to organize agent configuration and setup materials.

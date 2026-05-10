@@ -34,6 +34,14 @@ const AGENTS = {
     color: '#10b981',
     colorSoft: 'rgba(16,185,129,0.16)',
   },
+  hermes: {
+    id: 'hermes',
+    name: 'Hermes',
+    short: 'HM',
+    model: 'hermes-3',
+    color: '#8b5cf6',
+    colorSoft: 'rgba(139,92,246,0.16)',
+  },
 };
 
 // status: 'done' | 'idle' | 'working' | 'error' | 'awaiting'
