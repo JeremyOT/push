@@ -139,6 +139,7 @@ const PALETTE_ITEMS = [
   { id: 'p8', cmd: '/new-agent', label: 'New agent', desc: 'Start a new Gemini agent (optional: subdir)', icon: 'plus' },
   { id: 'p9', cmd: '/restart', label: 'Restart fresh', desc: 'Restart Gemini-agent with a new session', icon: 'refresh' },
   { id: 'p10', cmd: '/restart resume', label: 'Restart resume', desc: 'Restart Gemini-agent and resume current session', icon: 'refresh' },
+  { id: 'p11', cmd: '/push register', label: 'Register push', desc: 'Re-register for Web Push notifications', icon: 'sparkle' },
 ];
 
 function CommandPalette({ theme, open, onClose, onPick }) {

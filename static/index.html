@@ -91,8 +91,50 @@ root.render(<App />);
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').then(() => {
         console.log('Service Worker registered');
+        registerPush();
     });
 }
+
+async function registerPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.warn('Push messaging is not supported');
+        return false;
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        
+        // Fetch VAPID public key
+        const response = await fetch('/vapid-public-key');
+        const { publicKey } = await response.json();
+        
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: publicKey
+        });
+        
+        const subResponse = await fetch('/subscribe', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(subscription)
+        });
+        
+        if (subResponse.ok) {
+            console.log('Push subscription successful');
+            return true;
+        } else {
+            console.error('Push subscription failed');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error during push registration:', error);
+        return false;
+    }
+}
+
+window.registerPush = registerPush;
 </script>
 </body>
 </html>

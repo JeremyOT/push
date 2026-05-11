@@ -377,6 +377,16 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const handleSend = async (text) => {
     if (!config.interactive) return;
     
+    if (text.startsWith('/push register')) {
+        const success = await window.registerPush?.();
+        if (success) {
+            showToast('Push notifications registered');
+        } else {
+            showToast('Failed to register push');
+        }
+        return;
+    }
+
     try {
         const payload = { message: text, is_user: true };
         if (thread.sessionId) {
