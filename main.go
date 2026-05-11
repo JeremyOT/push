@@ -1138,6 +1138,11 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 		sessionName = "Hermes Agent"
 	}
 
+	// Normalize Hermes URL: default to /v1/chat/completions if no path is provided
+	if !strings.Contains(hermesURL, "/v1/") {
+		hermesURL = strings.TrimSuffix(hermesURL, "/") + "/v1/chat/completions"
+	}
+
 	sendMsg := func(text string, title string, agent string, status string, identifier string) {
 		i := Interaction{
 			Message:    text,

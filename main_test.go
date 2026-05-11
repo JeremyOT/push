@@ -1178,6 +1178,11 @@ func TestRunHermesAgent(t *testing.T) {
 			return
 		}
 
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("Expected path /v1/chat/completions, got %s", r.URL.Path)
+			return
+		}
+
 		var body map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
 			msgs := body["messages"].([]interface{})
