@@ -124,6 +124,7 @@ go build -ldflags="-w -s" -o push main.go
 - Fixed a bug where real agent messages were incorrectly styled as grey status notes by preventing metadata inheritance from system-level titles (like 'session-register', 'session-active', 'heartbeat') or the "tmux" status agent in the backend.
 - Refined the `/service` stream filtering and frontend message mapping to correctly identify system messages while ensuring real agent content (identified by stable identifiers) is displayed in full bubbles.
 - Added 'hermes' agent to the web UI with custom colors and icons for the Hermes Agent API proxy.
+- Fixed a bug where Hermes proxy responses would "stutter" (e.g., "howhow can") by enabling `replace: true` mode in the interaction updates. This ensures that the accumulated message content correctly overwrites previous versions in the feed.
 - Refactored Hermes Agent API proxy to follow the standard OpenAI streaming POST pattern. Each user message now initiates a new streaming POST request, with the SSE response parsed inline for real-time updates.
 - Updated `TestRunHermesAgent` to verify standard OpenAI/Hermes request-response streaming behavior.
 - Updated the `/new-agent` command to always start new agents with the `--yolo` flag enabled, ensuring automated responses by default.

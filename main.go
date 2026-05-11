@@ -1143,7 +1143,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 		hermesURL = strings.TrimSuffix(hermesURL, "/") + "/v1/chat/completions"
 	}
 
-	sendMsg := func(text string, title string, agent string, status string, identifier string) {
+	sendMsg := func(text string, title string, agent string, status string, identifier string, replace bool) {
 		i := Interaction{
 			Message:    text,
 			Title:      title,
@@ -1151,6 +1151,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 			Agent:      agent,
 			Status:     status,
 			Identifier: identifier,
+			Replace:    replace,
 		}
 		data, _ := json.Marshal(i)
 		client := &http.Client{Timeout: 5 * time.Second}
@@ -1161,7 +1162,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 	}
 
 	// Initial registration
-	sendMsg("Connected to Hermes Agent API Proxy (Standard OpenAI Mode)", "session-register", "hermes", "r", "")
+	sendMsg("Connected to Hermes Agent API Proxy (Standard OpenAI Mode)", "session-register", "hermes", "r", "", false)
 
 	// Listen for user messages from Push to forward to Hermes
 	var lastTimestamp time.Time
@@ -1212,7 +1213,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 					
 					hReq, err := http.NewRequestWithContext(ctx, "POST", hermesURL, bytes.NewReader(jsonData))
 					if err != nil {
-						sendMsg("Error creating Hermes request: "+err.Error(), sessionName, "hermes", "err", "")
+						sendMsg("Error creating Hermes request: "+err.Error(), sessionName, "hermes", "err", "", false)
 						return
 					}
 					hReq.Header.Set("Content-Type", "application/json")
@@ -1220,14 +1221,14 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 
 					hResp, err := http.DefaultClient.Do(hReq)
 					if err != nil {
-						sendMsg("Error connecting to Hermes: "+err.Error(), sessionName, "hermes", "err", "")
+						sendMsg("Error connecting to Hermes: "+err.Error(), sessionName, "hermes", "err", "", false)
 						return
 					}
 					defer hResp.Body.Close()
 
 					if hResp.StatusCode != http.StatusOK {
 						body, _ := io.ReadAll(hResp.Body)
-						sendMsg(fmt.Sprintf("Hermes API error (%d): %s", hResp.StatusCode, string(body)), sessionName, "hermes", "err", "")
+						sendMsg(fmt.Sprintf("Hermes API error (%d): %s", hResp.StatusCode, string(body)), sessionName, "hermes", "err", "", false)
 						return
 					}
 
@@ -1253,7 +1254,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 							data := strings.TrimPrefix(line, "data: ")
 							if data == "[DONE]" {
 								if currentID != "" {
-									sendMsg(currentMsg, sessionName, "hermes", "r", currentID)
+									sendMsg(currentMsg, sessionName, "hermes", "r", currentID, true)
 								}
 								currentID = ""
 								currentMsg = ""
@@ -1268,7 +1269,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 								}
 								if err := json.Unmarshal([]byte(data), &progress); err == nil {
 									msg := fmt.Sprintf("🔧 **%s**: `%s` (%s)", progress.Tool, progress.Input, progress.Status)
-									sendMsg(msg, sessionName, "hermes", "w", "")
+									sendMsg(msg, sessionName, "hermes", "w", "", false)
 								}
 								continue
 							}
@@ -1288,7 +1289,7 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 										currentID = fmt.Sprintf("hermes-sse-%d", time.Now().UnixNano())
 									}
 									currentMsg += chunk.Choices[0].Delta.Content
-									sendMsg(currentMsg, sessionName, "hermes", "w", currentID)
+									sendMsg(currentMsg, sessionName, "hermes", "w", currentID, true)
 								}
 							}
 						}
