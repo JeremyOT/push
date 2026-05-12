@@ -31,11 +31,30 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 999px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.45); }
+  
+  /* Markdown styling */
+  .markdown-body { line-height: 1.5; font-size: 14px; }
+  .markdown-body p, .markdown-body ul, .markdown-body ol, .markdown-body pre, .markdown-body blockquote { margin-bottom: 12px; }
+  .markdown-body p:last-child { margin-bottom: 0; }
+  .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 { margin: 16px 0 8px; font-weight: 600; line-height: 1.25; }
+  .markdown-body h1 { font-size: 1.5em; }
+  .markdown-body h2 { font-size: 1.3em; }
+  .markdown-body h3 { font-size: 1.1em; }
+  .markdown-body code { font-family: "JetBrains Mono", monospace; font-size: 0.9em; padding: 0.2em 0.4em; border-radius: 4px; background: rgba(128,128,128,0.15); }
+  .markdown-body pre { padding: 12px; overflow: auto; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); }
+  .markdown-body pre code { padding: 0; background: transparent; font-size: 13px; }
+  .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
+  .markdown-body blockquote { padding-left: 1em; border-left: 3px solid rgba(128,128,128,0.35); color: #9aa3ad; }
+  .markdown-body img { max-width: 100%; height: auto; border-radius: 4px; }
+  .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 12px; }
+  .markdown-body th, .markdown-body td { border: 1px solid rgba(128,128,128,0.3); padding: 6px 12px; text-align: left; }
+  .markdown-body th { background: rgba(128,128,128,0.1); }
 </style>
 
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 <div id="root"></div>

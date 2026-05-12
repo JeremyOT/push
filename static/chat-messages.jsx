@@ -31,6 +31,27 @@ function MessageMeta({ theme, agent, status, time, align = 'left' }) {
   );
 }
 
+function Markdown({ text, theme }) {
+  if (!text) return null;
+  
+  const html = React.useMemo(() => {
+    try {
+      return marked.parse(text);
+    } catch (e) {
+      console.error('Markdown parse error:', e);
+      return text;
+    }
+  }, [text]);
+
+  return (
+    <div 
+      className="markdown-body"
+      dangerouslySetInnerHTML={{ __html: html }}
+      style={{ color: 'inherit' }}
+    />
+  );
+}
+
 function UserBubble({ msg, theme, onCopy }) {
   const copy = () => {
     navigator.clipboard.writeText(msg.text);
@@ -46,8 +67,10 @@ function UserBubble({ msg, theme, onCopy }) {
         wordBreak: 'break-word',
       }}>
         {msg.link ? (
-            <a href={msg.link} target="_blank" style={{ color: 'inherit', textDecoration: 'underline' }}>{msg.text}</a>
-        ) : msg.text}
+            <a href={msg.link} target="_blank" style={{ color: 'inherit', textDecoration: 'underline' }}>
+              <Markdown text={msg.text} theme={theme} />
+            </a>
+        ) : <Markdown text={msg.text} theme={theme} />}
       </div>
       <MessageMeta theme={theme} time={msg.time} align="right" />
     </div>
@@ -75,32 +98,19 @@ function AgentBubble({ msg, theme, onCopy }) {
           {msg.title && <div style={{ fontWeight: 'bold', marginBottom: 5 }}>{msg.title}</div>}
           {msg.link ? (
               <a href={msg.link} target="_blank" style={{ color: 'inherit', textDecoration: 'underline' }}>
-                  {renderInline(msg.text, theme)}
+                  <Markdown text={msg.text} theme={theme} />
               </a>
-          ) : renderInline(msg.text, theme)}
+          ) : <Markdown text={msg.text} theme={theme} />}
         </div>
       </div>
     </div>
   );
 }
 
-// Render inline `code` segments
+// Render inline `code` segments (kept for backward compatibility or direct use if needed)
 function renderInline(text, theme) {
   if (!text) return null;
-  const parts = text.split(/(`[^`]+`)/g);
-  return parts.map((p, i) => {
-    if (p.startsWith('`') && p.endsWith('`')) {
-      return (
-        <code key={i} style={{
-          fontFamily: FONT_MONO, fontSize: 12.5,
-          padding: '1px 5px', borderRadius: 4,
-          background: theme.panel2, border: `1px solid ${theme.border}`,
-          color: theme.fg,
-        }}>{p.slice(1, -1)}</code>
-      );
-    }
-    return <span key={i}>{p}</span>;
-  });
+  return <Markdown text={text} theme={theme} />;
 }
 
 function StatusNote({ msg, theme, onCopy }) {

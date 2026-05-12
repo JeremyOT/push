@@ -52,6 +52,8 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented full Markdown support for received messages in the web UI using the `marked` library, including support for headings, lists, code blocks, and tables.
+- Added custom CSS for Markdown elements to ensure they match the application's pro/utilitarian design language.
 - Implemented `/push register` command and automated push registration on page load to ensure reliable delivery of Web Push notifications.
 - Implemented `/new-agent` command in the web UI (command palette) and backend; allows launching new Gemini agents in specified subdirectories using `tmux new-window`.
 - Refined sidebar grouping: the "Active" section now ONLY contains explicitly connected sessions (`active: true`).
