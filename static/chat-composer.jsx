@@ -88,11 +88,12 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              send();
+              if (isWorking) onStop?.();
+              else send();
             }
           }}
           rows={1}
-          placeholder="Send a message, or / for commands…"
+          placeholder={isWorking ? "Agent is working…" : "Send a message, or / for commands…"}
           style={{
             all: 'unset', flex: 1, minWidth: 0,
             fontFamily: FONT_SANS, fontSize: 14, lineHeight: 1.45,
@@ -101,16 +102,33 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
             resize: 'none', maxHeight: 140, overflowY: 'auto',
           }}
         />
-        <button onClick={send} disabled={!value.trim()} style={{
-          all: 'unset', cursor: value.trim() ? 'pointer' : 'not-allowed',
-          width: 32, height: 32, borderRadius: 8,
-          background: value.trim() ? agentColor : theme.borderStrong,
-          color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-          transition: 'background 0.15s',
-          boxShadow: value.trim() ? `0 4px 12px ${agentColor}44` : 'none',
-        }} title="Send (Enter)"><IconArrowUp size={15} /></button>
+        {isWorking ? (
+          <button onClick={onStop} style={{
+            all: 'unset', cursor: 'pointer',
+            width: 32, height: 32, borderRadius: 8,
+            background: theme.err,
+            color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'background 0.15s',
+            boxShadow: `0 4px 12px ${theme.err}44`,
+          }} title="Stop (Esc)">
+            <IconStop size={14} />
+          </button>
+        ) : (
+          <button onClick={send} disabled={!value.trim()} style={{
+            all: 'unset', cursor: value.trim() ? 'pointer' : 'not-allowed',
+            width: 32, height: 32, borderRadius: 8,
+            background: value.trim() ? agentColor : theme.borderStrong,
+            color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+            transition: 'background 0.15s',
+            boxShadow: value.trim() ? `0 4px 12px ${agentColor}44` : 'none',
+          }} title="Send (Enter)">
+            <IconArrowUp size={15} />
+          </button>
+        )}
       </div>
       <div style={{
         display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap',

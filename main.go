@@ -954,6 +954,17 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							msg = "/exit"
 						}
 
+						if msg == "/stop" && i.SessionID != "" && i.SessionID == sessionID {
+							// Send Escape to tmux to interrupt the agent
+							cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Escape")
+							if err := cmd.Run(); err != nil {
+								fmt.Fprintf(stderr, "\rFailed to send Escape to tmux: %v (Target: %s)\n", err, tmuxTarget)
+							}
+							// Send status update to clear "working" state in UI
+							sendMsg("Stopped", title, agent, "r")
+							continue
+						}
+
 						if strings.HasPrefix(msg, "/new-agent") && i.SessionID != "" && i.SessionID == sessionID {
 							parts := strings.Fields(msg)
 							target := ""

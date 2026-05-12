@@ -407,6 +407,12 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
   };
 
+  const handleStop = () => {
+    if (isTyping) {
+        handleSend('/stop');
+    }
+  };
+
   const handleDecide = (msgId, decision) => {
     setDecisions((d) => ({ ...d, [msgId]: decision }));
     // In a real app, this would call the backend
@@ -443,17 +449,24 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (el) el.scrollTop = el.scrollHeight;
   }, [filteredMessages, isTyping, activeId]);
 
-  // Cmd-K binding
+  // Cmd-K and Escape bindings
   React.useEffect(() => {
     const h = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen(true);
       }
+      if (e.key === 'Escape') {
+        if (paletteOpen) {
+          setPaletteOpen(false);
+        } else if (isTyping) {
+          handleStop();
+        }
+      }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, []);
+  }, [paletteOpen, isTyping]);
 
   const sidebar = (
     <Sidebar
@@ -542,6 +555,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             value={composerValue}
             setValue={setComposerValue}
             onSend={handleSend}
+            onStop={handleStop}
             onOpenPalette={() => setPaletteOpen(true)}
             agentColor={agent.color}
             isWorking={isTyping}

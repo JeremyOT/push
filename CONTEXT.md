@@ -123,31 +123,9 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
-- Fixed a bug where real agent messages were incorrectly styled as grey status notes by preventing metadata inheritance from system-level titles (like 'session-register', 'session-active', 'heartbeat') or the "tmux" status agent in the backend.
-- Refined the `/service` stream filtering and frontend message mapping to correctly identify system messages while ensuring real agent content (identified by stable identifiers) is displayed in full bubbles.
-- Added 'hermes' agent to the web UI with custom colors and icons for the Hermes Agent API proxy.
-- Fixed a bug where Hermes proxy responses would "stutter" (e.g., "howhow can") by enabling `replace: true` mode in the interaction updates. This ensures that the accumulated message content correctly overwrites previous versions in the feed.
-- Refactored Hermes Agent API proxy to follow the standard OpenAI streaming POST pattern. Each user message now initiates a new streaming POST request, with the SSE response parsed inline for real-time updates.
-- Updated `TestRunHermesAgent` to verify standard OpenAI/Hermes request-response streaming behavior.
-- Updated the `/new-agent` command to always start new agents with the `--yolo` flag enabled, ensuring automated responses by default.
-- Created the `agent-setup` directory to organize agent configuration and setup materials.
-- Implemented the `/new-agent [name]` command in the `tmux` mode CLI client, allowing users to spawn new agent sessions in subdirectories directly from the web UI.
-- Started a new Gemini agent session in the `hooks` subdirectory using a dedicated tmux window (`hooks-agent`) and a fresh session ID.
-- Built the `push` binary with optimized flags (`-w -s`) to support agent integration.
-- Fixed a bug where the sidebar message summaries could be overwritten by older messages; added per-thread `lastMsgId` tracking to ensure snippets and timestamps only update with newer content.
-- Enhanced the sidebar footer: agent icons now only show for currently active or pinned agents, and each icon includes a status dot reflecting the most urgent state of its associated sessions.
-- Simplified the tablet layout by removing the redundant `AgentRail` (extra left sidebar), as its functionality was already covered by the main sidebar and its interactive footer.
-- Fixed a bug where push notifications from the `afteragent` hook were prefixed with multiple newlines by trimming the response text.
-- Updated `README.md` to include detailed instructions on project deployment via `deploy.sh` and 2-way communication using the `gemini-agent` script.
-- Enhanced system notifications: `session-register` and `tmux-service` messages now appear as subtle status notes in the UI, correctly attributed to the session name and a new "Tmux" agent.
-- Enhanced "forwarding" status messages to include the session name in both the message title and content (e.g., "[Session Name] Now forwarding responses to...").
-- Fixed a bug where the "Main Feed" snippet in the sidebar could be overwritten by older messages (e.g., when fetching missing thread info for active sessions); added a check to only update the Main Feed snippet if the message is newer or equal to the latest globally seen message.
-- Fixed stale sidebar message summaries after a restart: the web UI now fetches the latest interaction for every session upon initialization to ensure snippets and timestamps are accurate.
-- Enhanced `/interactions` endpoint with a `latest_per_session` parameter to support efficient sidebar initialization.
-- Improved agent list reliability: the web UI now proactively fetches registration metadata for unknown active sessions identified via heartbeats, and uses message ID tracking (`after` parameter) during stream reconnection to ensure no registration messages are missed.
-- Enhanced `/service` and `/interactions` endpoints with `after` (by ID) and `session_id` filtering for more robust client synchronization.
-- Changed the default state for agents from "done" to "ready" when no state is provided by the server.
-- Updated the "ready" status label to "awaiting" and ensuring agents in the "ready" state are counted as "awaiting" in the sidebar footer.
+- Implemented "stop" functionality for Gemini agent: the UI now replaces the send button with a stop button while the agent is working, and the `Escape` key can be used to interrupt the agent via `tmux send-keys`.
+- Refined the Markdown styling to remove excessive vertical padding in message bubbles.
+- Implemented full Markdown support for received messages in the web UI using the `marked` library, including support for headings, lists, code blocks, and tables.
 - Removed `/new thread` and `/search` commands from the command palette.
 - Streamlined the sidebar by removing the search box and "New task" button.
 - Enhanced the sidebar footer: agent icons are now interactive and select the corresponding thread when clicked.
