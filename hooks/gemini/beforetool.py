@@ -8,6 +8,13 @@ def main():
     try:
         # Read input from stdin
         raw_input = sys.stdin.read()
+        
+        # Log to a file for debugging
+        with open("/Users/jeremyot/dev/push/hooks/gemini/beforetool.log", "a") as f:
+            f.write(f"\n--- {os.getpid()} ---\n")
+            f.write(raw_input)
+            f.write("\n")
+
         if not raw_input.strip():
             return
             

@@ -24,7 +24,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const agent = AGENTS[thread.agent];
 
   // Typing indicator derived from thread status
-  const isTyping = thread.id !== 't1' && thread.status !== 'ready' && thread.status !== 'idle';
+  const isTyping = thread.id !== 't1' && ['working', 'awaiting'].includes(thread.status);
   const typingAgent = isTyping ? thread.agent : null;
 
   const scrollRef = React.useRef(null);
@@ -243,7 +243,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         updated: mapped.time,
                         lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
                         sessionPath: msg.session_path || t.sessionPath,
-                        status: msg.is_user ? 'working' : (mapped.status === 'done' ? 'working' : (mapped.status || t.status)),
+                        status: msg.is_user ? 'working' : (mapped.status || t.status),
                         active: nextActive,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
                         placeholder: false
@@ -255,7 +255,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     id: sid,
                     agent,
                     title: (title || 'CLI Agent').trim(),
-                    status: mapped.status === 'done' ? 'working' : (mapped.status || 'ready'),
+                    status: mapped.status || 'ready',
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
@@ -308,18 +308,35 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     try {
       // 1. Fetch latest interaction for every session to populate sidebar accurately
       const sessionResponse = await fetch('/interactions?latest_per_session=true');
-      if (sessionResponse.ok) {
-        const sessionData = await sessionResponse.json();
-        sessionData.forEach(msg => processMessage(msg, setMessages, setThreads, true));
+      const sessionData = sessionResponse.ok ? await sessionResponse.json() : [];
+
+      // 2. Fetch history for the active session if we have one (to ensure latest context)
+      let activeSessionData = [];
+      if (activeId && activeId !== 't1') {
+          const activeResp = await fetch(`/interactions?session_id=${activeId}&limit=50`);
+          if (activeResp.ok) activeSessionData = await activeResp.json();
       }
 
-      // 2. Fetch recent interactions for the main feed
+      // 3. Fetch recent interactions for the main feed
       const response = await fetch('/interactions');
-      if (!response.ok) throw new Error('Failed to fetch');
-      const data = await response.json();
-      if (data.length > 0) {
-        data.forEach(msg => processMessage(msg, setMessages, setThreads, true));
-      }
+      const recentData = response.ok ? await response.json() : [];
+
+      // 4. Combine, deduplicate, and sort by ID
+      const all = [...sessionData, ...activeSessionData, ...recentData];
+      const seen = new Set();
+      const uniqueSorted = all
+          .filter(msg => {
+              if (msg.id > 0) {
+                  if (seen.has(msg.id)) return false;
+                  seen.add(msg.id);
+                  return true;
+              }
+              return true; // Keep id 0 messages
+          })
+          .sort((a, b) => a.id - b.id);
+
+      // 5. Process all in order
+      uniqueSorted.forEach(msg => processMessage(msg, setMessages, setThreads, true));
     } catch (error) {
       console.error('Error fetching initial messages:', error);
     }
@@ -468,10 +485,13 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return <AgentBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
   };
 
-  const filteredMessages = React.useMemo(() => messages.filter(m => {
-    if (!thread || thread.id === 't1') return true; // Main feed shows everything
-    return m.sessionId === thread.sessionId;
-  }), [messages, thread]);
+  const filteredMessages = React.useMemo(() => {
+    const filtered = messages.filter(m => {
+        if (!thread || thread.id === 't1') return true; // Main feed shows everything
+        return m.sessionId === thread.sessionId;
+    });
+    return filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
+  }, [messages, thread]);
 
   React.useEffect(() => {
     const el = scrollRef.current;

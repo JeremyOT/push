@@ -647,7 +647,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			return err
 		}
 	} else {
-		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Agent, i.SessionID, i.SessionPath)
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
 		if err != nil {
 			return err
 		}

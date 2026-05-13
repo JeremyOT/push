@@ -341,7 +341,7 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
                     {q.type === 'choice' && q.options?.map((opt, oIdx) => (
                       <button
                         key={oIdx}
-                        onClick={() => onDecide(opt.label)}
+                        onClick={() => onDecide(String(oIdx + 1))}
                         style={{
                           all: 'unset', cursor: 'pointer',
                           padding: '6px 12px', borderRadius: 8,
@@ -359,12 +359,12 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
                     
                     {q.type === 'yesno' && (
                       <>
-                        <button onClick={() => onDecide('Yes')} style={{
+                        <button onClick={() => onDecide('y')} style={{
                           all: 'unset', cursor: 'pointer', padding: '6px 16px', borderRadius: 8,
                           background: theme.ok + '22', color: theme.ok, border: `1px solid ${theme.ok}44`,
                           fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,
                         }}>Yes</button>
-                        <button onClick={() => onDecide('No')} style={{
+                        <button onClick={() => onDecide('n')} style={{
                           all: 'unset', cursor: 'pointer', padding: '6px 16px', borderRadius: 8,
                           background: theme.err + '22', color: theme.err, border: `1px solid ${theme.err}44`,
                           fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,

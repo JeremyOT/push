@@ -22,9 +22,14 @@ def main():
         wd = os.path.basename(cwd) if cwd else ""
         session_id = data.get("session_id", "")
         
-        msg_text = data.get("message", "")
         notification_type = data.get("notification_type", "")
         details = data.get("details", {})
+        
+        # If it's a tool permission for ask_user, we skip it because beforetool.py handles it
+        if notification_type == "ToolPermission" and details.get("type") == "ask_user":
+            return
+
+        msg_text = data.get("message", "")
         
         message = f"{wd}: {msg_text}"
         title = f"Gemini - {notification_type}"
