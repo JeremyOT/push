@@ -20,19 +20,31 @@ def main():
     try:
         cwd = data.get("cwd", "")
         wd = os.path.basename(cwd) if cwd else ""
+        session_id = data.get("session_id", "")
         
         msg_text = data.get("message", "")
         notification_type = data.get("notification_type", "")
+        details = data.get("details", {})
         
         message = f"{wd}: {msg_text}"
         title = f"Gemini - {notification_type}"
         
         payload = {
-            "message": message,
+            "message": msg_text,
             "title": title,
-            "link": ""
+            "agent": "gemini",
+            "session_id": session_id,
+            "session_path": cwd,
+            "link": "",
+            "detailed_message": json.dumps(details) if details else msg_text,
+            "quiet": False
         }
         
+        # If it's a tool permission, we want the UI to treat it as an approval
+        if notification_type == "ToolPermission":
+            payload["status"] = "awaiting" # Special status for approvals
+            # The frontend will map this based on the title containing 'ToolPermission'
+            
         url = "http://127.0.0.1:8089/interactions"
         req = urllib.request.Request(
             url, 
