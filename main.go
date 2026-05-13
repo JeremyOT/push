@@ -625,7 +625,9 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			}
 			if !i.Replace {
 				i.Message = existingMessage + i.Message
-				i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
+				if i.DetailedMessage == "" {
+					i.DetailedMessage = existingDetailedMessage
+				}
 			}
 			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
 			if err != nil {

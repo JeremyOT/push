@@ -10,7 +10,8 @@ def main():
         if not raw_input.strip():
             return
             
-        with open(os.path.expanduser("~/note.json"), "w") as f:
+        with open(os.path.expanduser("~/note.json"), "a") as f:
+            f.write("\n--- " + str(os.getpid()) + " ---\n")
             f.write(raw_input)
             
         data = json.loads(raw_input)
