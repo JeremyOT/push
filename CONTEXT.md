@@ -125,6 +125,11 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Refined terminal status logic: the `done` state (post-model response) is now treated as a busy state, keeping the "Stop" button and typing indicator visible until the agent explicitly returns to `ready`, `idle`, or `passive`.
+- Broadened the `Stop` button trigger to include any state that isn't explicitly "at rest" (ready, idle, passive).
+- Standardized tool permission buttons to "Allow", "Allow Session", and "Deny" with correct numeric index mapping (1, 2, 4).
+- Improved tool permission context parsing to robustly handle both shell commands and file-edit operations.
+- Fixed a backend bug where metadata was being corrupted by incorrect `DetailedMessage` merging during database updates.
 - Fixed a race condition and message ordering bug in the frontend: `fetchInitial` now processes historical messages in a sorted, deduplicated order, and ensures the latest context for the active session is always fetched upon refresh.
 - Optimized `QuestionCard` to send single-character terminal-compatible responses (`y`/`n`, `1`, `2`, etc.) to ensure reliable interaction with CLI-based agents.
 - Resolved redundant tool permission prompts by suppressing "ToolPermission" notifications in `hooks/gemini/notification.py` when the calling tool is `ask_user`.

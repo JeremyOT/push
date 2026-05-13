@@ -24,7 +24,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const agent = AGENTS[thread.agent];
 
   // Typing indicator derived from thread status
-  const isTyping = thread.id !== 't1' && ['working', 'awaiting'].includes(thread.status);
+  const isTyping = thread.id !== 't1' && !['ready', 'idle', 'passive'].includes(thread.status);
   const typingAgent = isTyping ? thread.agent : null;
 
   const scrollRef = React.useRef(null);
@@ -98,20 +98,23 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     if (msg.kind === 'approval' || displayTitle.includes('Approval') || displayTitle.includes('Approve') || displayTitle.includes('ToolPermission')) {
-      let actions = ['Approve', 'Deny'];
+      let actions = ['Allow', 'Allow Session', 'Deny'];
       let summary = msg.message;
-      let risk = 'unknown';
-
-      if (displayTitle.includes('ToolPermission') || (msg.detailed_message && msg.detailed_message.includes('tool_name'))) {
-        actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
-        risk = 'high';
-      }
+      let risk = 'high';
 
       try {
         const details = JSON.parse(msg.detailed_message);
-        if (details.tool_name) {
+        if (details.title) {
+            summary = details.title;
+            if (details.command) summary += `: ${details.command}`;
+            else if (details.fileName) summary += `: ${details.fileName}`;
+        } else if (details.tool_name) {
           summary = `Allow execution of tool: ${details.tool_name}`;
           if (details.tool_input) summary += ` with input: ${JSON.stringify(details.tool_input)}`;
+        } else if (details.type === 'exec' && details.command) {
+          summary = `Allow execution of command: ${details.command}`;
+        } else if (details.type === 'edit' && details.fileName) {
+          summary = `Allow editing of file: ${details.fileName}`;
         }
       } catch (e) {}
       
@@ -255,7 +258,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     id: sid,
                     agent,
                     title: (title || 'CLI Agent').trim(),
-                    status: mapped.status || 'ready',
+                    status: msg.is_user ? 'working' : (mapped.status || 'ready'),
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
@@ -446,7 +449,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     const isApproval = msg && msg.kind === 'approval';
 
     if (isApproval) {
-        if (decision === 'Allow Once') handleSend('1');
+        if (decision === 'Allow' || decision === 'Allow Once') handleSend('1');
         else if (decision === 'Allow Session') handleSend('2');
         else if (decision === 'Allow Forever') handleSend('3');
         else if (decision === 'Deny') {
@@ -482,6 +485,9 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         decision={decisions[m.id]}
         onDecide={(d) => handleDecide(m.id, d)} />
     );
+    if (m.kind === 'agent') {
+        if (!m.text && (m.title?.includes('ToolPermission') || m.title?.includes('Question'))) return null;
+    }
     return <AgentBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
   };
 
