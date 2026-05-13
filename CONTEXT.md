@@ -125,6 +125,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed a bug where regular questions (from `ask_user`) were incorrectly triggering tool permission dialogs (Allow Once, Deny, etc.) by consolidating and prioritizing message `kind` detection in the frontend.
 - Successfully started the `hooks-agent` session in the `hooks` subdirectory on the local machine (`darwin`), verifying it reached the interactive prompt.
 - Verified the `beforetool` hook by asking questions, which were intercepted and posted as interactions to the local `push` server.
 - Implemented "stop" functionality for Gemini agent: the UI now replaces the send button with a stop button while the agent is working, and the `Escape` key can be used to interrupt the agent via `tmux send-keys`.

@@ -61,16 +61,18 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     let agentId = 'remote';
+    let displayTitle = msg.title || '';
     
     if (msg.agent && AGENTS[msg.agent.toLowerCase()]) {
       agentId = msg.agent.toLowerCase();
     } else if (msg.title) {
       // Fallback: Parse agent from title prefix if present (e.g. "Gemini - Done")
-      const match = msg.title.match(/^(\w+)\s+-\s+/);
+      const match = msg.title.match(/^(\w+)\s+-\s+(.*)$/);
       if (match) {
         const potential = match[1].toLowerCase();
         if (AGENTS[potential]) {
           agentId = potential;
+          displayTitle = match[2];
         }
       }
     }
@@ -80,14 +82,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     else if (msg.status === 'd') status = 'done';
     else if (msg.status === 'r') status = 'ready';
     else if (msg.status === 'awaiting') status = 'awaiting';
-    else if (msg.title) {
+    else if (displayTitle) {
       // Fallback: Parse status from title
-      if (msg.title.endsWith(' - Done')) status = 'done';
-      else if (msg.title.endsWith(' - Working')) status = 'working';
+      if (displayTitle.endsWith('Done')) status = 'done';
+      else if (displayTitle.endsWith('Working')) status = 'working';
     }
 
     // Explicit kind handling
-    if (msg.kind === 'question') {
+    if (msg.kind === 'question' || displayTitle === 'Question' || displayTitle.endsWith(' - Question')) {
       let data = { questions: [] };
       try {
         data = JSON.parse(msg.detailed_message || msg.message);
@@ -95,9 +97,16 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       return { ...base, kind: 'question', agent: agentId, questions: data.questions || [] };
     }
 
-    if (msg.kind === 'approval') {
-      let actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
+    if (msg.kind === 'approval' || displayTitle.includes('Approval') || displayTitle.includes('Approve') || displayTitle.includes('ToolPermission')) {
+      let actions = ['Approve', 'Deny'];
       let summary = msg.message;
+      let risk = 'unknown';
+
+      if (displayTitle.includes('ToolPermission') || (msg.detailed_message && msg.detailed_message.includes('tool_name'))) {
+        actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
+        risk = 'high';
+      }
+
       try {
         const details = JSON.parse(msg.detailed_message);
         if (details.tool_name) {
@@ -105,91 +114,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
           if (details.tool_input) summary += ` with input: ${JSON.stringify(details.tool_input)}`;
         }
       } catch (e) {}
-      return { ...base, kind: 'approval', agent: agentId, summary, risk: 'high', actions };
+      
+      return { ...base, kind: 'approval', agent: agentId, summary, risk, actions };
     }
 
-    if (msg.kind === 'tool') {
+    if (msg.kind === 'tool' || displayTitle.includes('Run') || displayTitle.includes('$')) {
         return { ...base, kind: 'tool', agent: agentId, tool: 'shell', duration: '', lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l })) };
     }
 
-    if (msg.kind === 'status' || msg.agent === 'tmux') {
-        return { ...base, kind: 'status', agent: agentId, status: status || 'ready' };
-    }
-
-    if (msg.kind === 'agent') {
-        return { ...base, kind: 'agent', agent: agentId, status };
-    }
-
-    if (msg.kind === 'user') {
-        return { ...base, kind: 'user' };
-    }
-
-    // --- Legacy Fallback Detection ---
-
-    if (msg.title && msg.title.endsWith(' - Question')) {
-      let data = { questions: [] };
-      try {
-        data = JSON.parse(msg.detailed_message || msg.message);
-      } catch (e) {
-        console.error('Failed to parse question data:', e);
-      }
-      return {
-        ...base,
-        kind: 'question',
-        agent: agentId,
-        questions: data.questions || [],
-      };
-    }
-
-    // Try to detect tool or approval from title/message
-    if (msg.title && (msg.title.includes('Approval') || msg.title.includes('Approve') || msg.title.includes('ToolPermission'))) {
-      let summary = msg.message;
-      let actions = ['Approve', 'Deny'];
-      let isToolPermission = msg.title.includes('ToolPermission');
-
-      try {
-        const details = JSON.parse(msg.detailed_message);
-        if (details.tool_name) {
-          summary = `Allow execution of tool: ${details.tool_name}`;
-          if (details.tool_input) {
-            summary += ` with input: ${JSON.stringify(details.tool_input)}`;
-          }
-        }
-      } catch (e) {}
-
-      if (isToolPermission) {
-        actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
-      }
-
-      return {
-        ...base,
-        kind: 'approval',
-        agent: agentId,
-        summary: summary,
-        risk: isToolPermission ? 'high' : 'unknown',
-        actions: actions
-      };
-    }
-
-    if (msg.title && (msg.title.includes('Run') || msg.title.includes('$'))) {
-      return {
-        ...base,
-        kind: 'tool',
-        agent: agentId,
-        tool: 'shell',
-        duration: '',
-        lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l }))
-      };
-    }
-
     const systemTitles = ['session-register', 'session-active', 'session-inactive', 'tmux-service', 'heartbeat'];
-    if (!msg.identifier && (systemTitles.includes(msg.title) || msg.agent === 'tmux')) {
-      return {
-        ...base,
-        kind: 'status',
-        agent: agentId,
-        status: status || 'ready',
-      };
+    if (msg.kind === 'status' || (!msg.identifier && (systemTitles.includes(msg.title) || msg.agent === 'tmux'))) {
+        return { ...base, kind: 'status', agent: agentId, status: status || 'ready' };
     }
 
     return {
