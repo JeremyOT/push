@@ -125,6 +125,11 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed a race condition and message ordering bug in the frontend: `fetchInitial` now processes historical messages in a sorted, deduplicated order, and ensures the latest context for the active session is always fetched upon refresh.
+- Optimized `QuestionCard` to send single-character terminal-compatible responses (`y`/`n`, `1`, `2`, etc.) to ensure reliable interaction with CLI-based agents.
+- Resolved redundant tool permission prompts by suppressing "ToolPermission" notifications in `hooks/gemini/notification.py` when the calling tool is `ask_user`.
+- Fixed a backend bug in `main.go` where the message `kind` field was lost during certain database `INSERT` operations.
+- Added cache-busting version parameters to frontend script tags in `index.html`.
 - Fixed a bug where regular questions (from `ask_user`) were incorrectly triggering tool permission dialogs (Allow Once, Deny, etc.) by consolidating and prioritizing message `kind` detection in the frontend.
 - Successfully started the `hooks-agent` session in the `hooks` subdirectory on the local machine (`darwin`), verifying it reached the interactive prompt.
 - Verified the `beforetool` hook by asking questions, which were intercepted and posted as interactions to the local `push` server.
