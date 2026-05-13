@@ -33,6 +33,7 @@ def main():
             "message": msg_text,
             "title": title,
             "agent": "gemini",
+            "kind": "status", # Default to status
             "session_id": session_id,
             "session_path": cwd,
             "link": "",
@@ -42,6 +43,7 @@ def main():
         
         # If it's a tool permission, we want the UI to treat it as an approval
         if notification_type == "ToolPermission":
+            payload["kind"] = "approval"
             payload["status"] = "awaiting" # Special status for approvals
             # The frontend will map this based on the title containing 'ToolPermission'
             

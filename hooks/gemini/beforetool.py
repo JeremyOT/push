@@ -41,6 +41,7 @@ def main():
             "message": summary,
             "title": f"{wd} - Question" if wd else "Gemini - Question",
             "agent": "gemini",
+            "kind": "question",
             "status": "w",
             "session_id": session_id,
             "session_path": cwd,

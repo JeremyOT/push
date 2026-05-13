@@ -75,6 +75,57 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       }
     }
 
+    let status = null;
+    if (msg.status === 'w') status = 'working';
+    else if (msg.status === 'd') status = 'done';
+    else if (msg.status === 'r') status = 'ready';
+    else if (msg.status === 'awaiting') status = 'awaiting';
+    else if (msg.title) {
+      // Fallback: Parse status from title
+      if (msg.title.endsWith(' - Done')) status = 'done';
+      else if (msg.title.endsWith(' - Working')) status = 'working';
+    }
+
+    // Explicit kind handling
+    if (msg.kind === 'question') {
+      let data = { questions: [] };
+      try {
+        data = JSON.parse(msg.detailed_message || msg.message);
+      } catch (e) { console.error('Failed to parse question data:', e); }
+      return { ...base, kind: 'question', agent: agentId, questions: data.questions || [] };
+    }
+
+    if (msg.kind === 'approval') {
+      let actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
+      let summary = msg.message;
+      try {
+        const details = JSON.parse(msg.detailed_message);
+        if (details.tool_name) {
+          summary = `Allow execution of tool: ${details.tool_name}`;
+          if (details.tool_input) summary += ` with input: ${JSON.stringify(details.tool_input)}`;
+        }
+      } catch (e) {}
+      return { ...base, kind: 'approval', agent: agentId, summary, risk: 'high', actions };
+    }
+
+    if (msg.kind === 'tool') {
+        return { ...base, kind: 'tool', agent: agentId, tool: 'shell', duration: '', lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l })) };
+    }
+
+    if (msg.kind === 'status' || msg.agent === 'tmux') {
+        return { ...base, kind: 'status', agent: agentId, status: status || 'ready' };
+    }
+
+    if (msg.kind === 'agent') {
+        return { ...base, kind: 'agent', agent: agentId, status };
+    }
+
+    if (msg.kind === 'user') {
+        return { ...base, kind: 'user' };
+    }
+
+    // --- Legacy Fallback Detection ---
+
     if (msg.title && msg.title.endsWith(' - Question')) {
       let data = { questions: [] };
       try {
@@ -107,7 +158,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       } catch (e) {}
 
       if (isToolPermission) {
-        actions = ['Allow Once', 'Allow Session', 'Deny'];
+        actions = ['Allow Once', 'Allow Session', 'Allow Forever', 'Deny'];
       }
 
       return {
@@ -129,16 +180,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         duration: '',
         lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l }))
       };
-    }
-
-    let status = null;
-    if (msg.status === 'w') status = 'working';
-    else if (msg.status === 'd') status = 'done';
-    else if (msg.status === 'r') status = 'ready';
-    else if (msg.title) {
-      // Fallback: Parse status from title
-      if (msg.title.endsWith(' - Done')) status = 'done';
-      else if (msg.title.endsWith(' - Working')) status = 'working';
     }
 
     const systemTitles = ['session-register', 'session-active', 'session-inactive', 'tmux-service', 'heartbeat'];
@@ -450,23 +491,25 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     setDecisions((d) => ({ ...d, [msgId]: decision }));
     
     const msg = messages.find(m => m.id === msgId);
-    const isToolPermission = msg && msg.title && msg.title.includes('ToolPermission');
+    const isApproval = msg && msg.kind === 'approval';
 
-    if (isToolPermission) {
+    if (isApproval) {
         if (decision === 'Allow Once') handleSend('1');
         else if (decision === 'Allow Session') handleSend('2');
-        else if (decision === 'Deny') handleSend('3');
+        else if (decision === 'Allow Forever') handleSend('3');
+        else if (decision === 'Deny') {
+            // If it's a ToolPermission, we send the index (4). 
+            // For other approvals, we might still use /deny.
+            if (msg.title && msg.title.includes('ToolPermission')) handleSend('4');
+            else handleSend(`/deny ${msgId}`);
+        } else if (decision === 'Approve') {
+            handleSend(`/approve ${msgId}`);
+        }
         return;
     }
 
-    if (decision === 'Approve') {
-        handleSend(`/approve ${msgId}`);
-    } else if (decision === 'Deny') {
-        handleSend(`/deny ${msgId}`);
-    } else {
-        // For questions, we just send the answer text
-        handleSend(decision);
-    }
+    // For questions or other interactions
+    handleSend(decision);
   };
 
   const renderMessage = (m) => {

@@ -32,6 +32,7 @@ def main():
             "message": message[:50],
             "title": title,
             "agent": "gemini",
+            "kind": "agent",
             "status": "r",
             "session_id": session_id,
             "session_path": cwd,

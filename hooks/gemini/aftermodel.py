@@ -102,6 +102,7 @@ def main():
                 "message": message[:50],
                 "title": title,
                 "agent": "gemini",
+                "kind": "agent",
                 "status": status,
                 "session_id": session_id,
                 "session_path": cwd,

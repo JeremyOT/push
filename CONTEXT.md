@@ -52,11 +52,10 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
-- Implemented full Markdown support for received messages in the web UI using the `marked` library, including support for headings, lists, code blocks, and tables.
-- Added custom CSS for Markdown elements to ensure they match the application's pro/utilitarian design language and fix excessive vertical padding in message bubbles.
+- Refactored interaction metadata to include an explicit `kind` field (question, approval, agent, status) for robust message rendering, eliminating fragile title-based parsing.
+- Updated Gemini CLI hooks (`BeforeTool`, `Notification`) to explicitly report message `kind`, ensuring questions and tool permissions are always correctly identified.
+- Enhanced remote tool approval: the Push UI now supports the full range of Gemini CLI options (Allow Once, Allow Session, Allow Forever, Deny) with correct character mappings for remote terminal injection.
 - Implemented remote question/options capture: added a `BeforeTool` hook for `ask_user` to forward multiple-choice and text questions to the Push UI.
-- Implemented remote tool approval: enhanced the `Notification` hook to forward `ToolPermission` requests as interactive `ApprovalCard`s in the Push UI.
-- Added a `QuestionCard` component to render interactive questions (choice, yesno, text) in the chat feed, allowing users to answer remotely.
 - Implemented `/push register` command and automated push registration on page load to ensure reliable delivery of Web Push notifications.
 - Implemented `/new-agent` command in the web UI (command palette) and backend; allows launching new Gemini agents in specified subdirectories using `tmux new-window`.
 - Refined sidebar grouping: the "Active" section now ONLY contains explicitly connected sessions (`active: true`).
