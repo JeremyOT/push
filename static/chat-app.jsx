@@ -75,40 +75,6 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       }
     }
 
-    // Try to detect tool or approval from title/message
-    if (msg.title && (msg.title.includes('Approval') || msg.title.includes('Approve') || msg.title.includes('ToolPermission'))) {
-      let summary = msg.message;
-      try {
-        const details = JSON.parse(msg.detailed_message);
-        if (details.tool_name) {
-          summary = `Allow execution of tool: ${details.tool_name}`;
-          if (details.tool_input) {
-            summary += ` with input: ${JSON.stringify(details.tool_input)}`;
-          }
-        }
-      } catch (e) {}
-
-      return {
-        ...base,
-        kind: 'approval',
-        agent: agentId,
-        summary: summary,
-        risk: msg.title.includes('ToolPermission') ? 'high' : 'unknown',
-        actions: ['Approve', 'Deny']
-      };
-    }
-
-    if (msg.title && (msg.title.includes('Run') || msg.title.includes('$'))) {
-      return {
-        ...base,
-        kind: 'tool',
-        agent: agentId,
-        tool: 'shell',
-        duration: '',
-        lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l }))
-      };
-    }
-
     if (msg.title && msg.title.endsWith(' - Question')) {
       let data = { questions: [] };
       try {
@@ -121,6 +87,47 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         kind: 'question',
         agent: agentId,
         questions: data.questions || [],
+      };
+    }
+
+    // Try to detect tool or approval from title/message
+    if (msg.title && (msg.title.includes('Approval') || msg.title.includes('Approve') || msg.title.includes('ToolPermission'))) {
+      let summary = msg.message;
+      let actions = ['Approve', 'Deny'];
+      let isToolPermission = msg.title.includes('ToolPermission');
+
+      try {
+        const details = JSON.parse(msg.detailed_message);
+        if (details.tool_name) {
+          summary = `Allow execution of tool: ${details.tool_name}`;
+          if (details.tool_input) {
+            summary += ` with input: ${JSON.stringify(details.tool_input)}`;
+          }
+        }
+      } catch (e) {}
+
+      if (isToolPermission) {
+        actions = ['Allow Once', 'Allow Session', 'Deny'];
+      }
+
+      return {
+        ...base,
+        kind: 'approval',
+        agent: agentId,
+        summary: summary,
+        risk: isToolPermission ? 'high' : 'unknown',
+        actions: actions
+      };
+    }
+
+    if (msg.title && (msg.title.includes('Run') || msg.title.includes('$'))) {
+      return {
+        ...base,
+        kind: 'tool',
+        agent: agentId,
+        tool: 'shell',
+        duration: '',
+        lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l }))
       };
     }
 
@@ -445,12 +452,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     const msg = messages.find(m => m.id === msgId);
     const isToolPermission = msg && msg.title && msg.title.includes('ToolPermission');
 
+    if (isToolPermission) {
+        if (decision === 'Allow Once') handleSend('1');
+        else if (decision === 'Allow Session') handleSend('2');
+        else if (decision === 'Deny') handleSend('3');
+        return;
+    }
+
     if (decision === 'Approve') {
-        if (isToolPermission) handleSend('a');
-        else handleSend(`/approve ${msgId}`);
+        handleSend(`/approve ${msgId}`);
     } else if (decision === 'Deny') {
-        if (isToolPermission) handleSend('d');
-        else handleSend(`/deny ${msgId}`);
+        handleSend(`/deny ${msgId}`);
     } else {
         // For questions, we just send the answer text
         handleSend(decision);

@@ -242,31 +242,48 @@ function ApprovalCard({ msg, theme, decision, onDecide }) {
                 fontFamily: FONT_MONO, fontSize: 12, color: theme.fgMuted,
                 display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                {decision === 'Approve' ? (
-                  <><IconCheck size={14} style={{ color: theme.ok }} /> Approved · running now</>
+                {decision.includes('Approve') || decision.includes('Allow') ? (
+                  <><IconCheck size={14} style={{ color: theme.ok }} /> {decision} · running now</>
                 ) : (
-                  <><IconX size={14} style={{ color: theme.err }} /> Denied</>
+                  <><IconX size={14} style={{ color: theme.err }} /> {decision}</>
                 )}
               </div>
             ) : (
               <>
-                <button onClick={() => onDecide('Deny')} style={{
-                  all: 'unset', cursor: 'pointer', flex: 1,
-                  padding: '10px 14px', textAlign: 'center',
-                  fontFamily: FONT_SANS, fontSize: 13, fontWeight: 500,
-                  color: theme.fgMuted,
-                  borderRight: `1px solid ${theme.border}`,
-                }}>Deny</button>
-                <button onClick={() => onDecide('Approve')} style={{
-                  all: 'unset', cursor: 'pointer', flex: 1.4,
-                  padding: '10px 14px', textAlign: 'center',
-                  fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,
-                  color: theme.accentFg, background: theme.accent,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}>
-                  <IconCheck size={14} />
-                  Approve
-                </button>
+                {msg.actions ? msg.actions.map((act, i) => (
+                  <button key={i} onClick={() => onDecide(act)} style={{
+                    all: 'unset', cursor: 'pointer', flex: act.includes('Deny') ? 1 : 1.4,
+                    padding: '10px 14px', textAlign: 'center',
+                    fontFamily: FONT_SANS, fontSize: 13, fontWeight: act.includes('Deny') ? 500 : 600,
+                    color: act.includes('Deny') ? theme.fgMuted : theme.accentFg,
+                    background: act.includes('Deny') ? 'transparent' : theme.accent,
+                    borderRight: i < msg.actions.length - 1 ? `1px solid ${theme.border}` : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}>
+                    {act.includes('Deny') ? <IconX size={14} /> : <IconCheck size={14} />}
+                    {act}
+                  </button>
+                )) : (
+                  <>
+                    <button onClick={() => onDecide('Deny')} style={{
+                      all: 'unset', cursor: 'pointer', flex: 1,
+                      padding: '10px 14px', textAlign: 'center',
+                      fontFamily: FONT_SANS, fontSize: 13, fontWeight: 500,
+                      color: theme.fgMuted,
+                      borderRight: `1px solid ${theme.border}`,
+                    }}>Deny</button>
+                    <button onClick={() => onDecide('Approve')} style={{
+                      all: 'unset', cursor: 'pointer', flex: 1.4,
+                      padding: '10px 14px', textAlign: 'center',
+                      fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,
+                      color: theme.accentFg, background: theme.accent,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}>
+                      <IconCheck size={14} />
+                      Approve
+                    </button>
+                  </>
+                )}
               </>
             )}
           </div>
