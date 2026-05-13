@@ -98,6 +98,21 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       };
     }
 
+    if (msg.title && msg.title.endsWith(' - Question')) {
+      let data = { questions: [] };
+      try {
+        data = JSON.parse(msg.detailed_message || msg.message);
+      } catch (e) {
+        console.error('Failed to parse question data:', e);
+      }
+      return {
+        ...base,
+        kind: 'question',
+        agent: agentId,
+        questions: data.questions || [],
+      };
+    }
+
     let status = null;
     if (msg.status === 'w') status = 'working';
     else if (msg.status === 'd') status = 'done';
@@ -415,11 +430,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const handleDecide = (msgId, decision) => {
     setDecisions((d) => ({ ...d, [msgId]: decision }));
-    // In a real app, this would call the backend
+    
     if (decision === 'Approve') {
         handleSend(`/approve ${msgId}`);
-    } else {
+    } else if (decision === 'Deny') {
         handleSend(`/deny ${msgId}`);
+    } else {
+        // For questions, we just send the answer text
+        handleSend(decision);
     }
   };
 
@@ -433,6 +451,11 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     );
     if (m.kind === 'approval') return (
       <ApprovalCard key={m.id} msg={m} theme={theme}
+        decision={decisions[m.id]}
+        onDecide={(d) => handleDecide(m.id, d)} />
+    );
+    if (m.kind === 'question') return (
+      <QuestionCard key={m.id} msg={m} theme={theme}
         decision={decisions[m.id]}
         onDecide={(d) => handleDecide(m.id, d)} />
     );

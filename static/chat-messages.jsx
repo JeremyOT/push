@@ -279,6 +279,127 @@ function ApprovalCard({ msg, theme, decision, onDecide }) {
   );
 }
 
+function QuestionCard({ msg, theme, decision, onDecide }) {
+  const a = AGENTS[msg.agent];
+  const decided = !!decision;
+  const questions = msg.questions || [];
+
+  return (
+    <div style={{ display: 'flex', gap: 10, maxWidth: '92%' }}>
+      <AgentMark agent={msg.agent} size={26} theme={theme} ring />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          borderRadius: 10, overflow: 'hidden',
+          border: `1.5px solid ${decided ? theme.border : theme.accent}`,
+          background: theme.bubble,
+          boxShadow: decided ? 'none' : `0 0 0 4px ${theme.accent}1a`,
+          transition: 'all 0.2s',
+        }}>
+          <div style={{ padding: '12px 14px 10px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8,
+              fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted,
+              textTransform: 'uppercase', letterSpacing: 0.6,
+            }}>
+              <IconSearch size={12} style={{ color: theme.accent }} />
+              Information Requested
+              <span style={{ flex: 1 }} />
+            </div>
+            
+            {questions.map((q, qIdx) => (
+              <div key={qIdx} style={{ marginBottom: qIdx < questions.length - 1 ? 16 : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{
+                    padding: '1px 6px', borderRadius: 4,
+                    background: theme.accent + '22', color: theme.accent,
+                    textTransform: 'uppercase', fontSize: 10, fontWeight: 600,
+                  }}>{q.header}</span>
+                  <div style={{
+                    fontFamily: FONT_SANS, fontSize: 14, fontWeight: 500, color: theme.fg,
+                  }}>{q.question}</div>
+                </div>
+
+                {!decided && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {q.type === 'choice' && q.options?.map((opt, oIdx) => (
+                      <button
+                        key={oIdx}
+                        onClick={() => onDecide(opt.label)}
+                        style={{
+                          all: 'unset', cursor: 'pointer',
+                          padding: '6px 12px', borderRadius: 8,
+                          background: theme.panel2, border: `1px solid ${theme.border}`,
+                          display: 'flex', flexDirection: 'column', gap: 2,
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.borderColor = theme.accent}
+                        onMouseLeave={(e) => e.currentTarget.style.borderColor = theme.border}
+                      >
+                        <div style={{ fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600, color: theme.fg }}>{opt.label}</div>
+                        <div style={{ fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted }}>{opt.description}</div>
+                      </button>
+                    ))}
+                    
+                    {q.type === 'yesno' && (
+                      <>
+                        <button onClick={() => onDecide('Yes')} style={{
+                          all: 'unset', cursor: 'pointer', padding: '6px 16px', borderRadius: 8,
+                          background: theme.ok + '22', color: theme.ok, border: `1px solid ${theme.ok}44`,
+                          fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,
+                        }}>Yes</button>
+                        <button onClick={() => onDecide('No')} style={{
+                          all: 'unset', cursor: 'pointer', padding: '6px 16px', borderRadius: 8,
+                          background: theme.err + '22', color: theme.err, border: `1px solid ${theme.err}44`,
+                          fontFamily: FONT_SANS, fontSize: 13, fontWeight: 600,
+                        }}>No</button>
+                      </>
+                    )}
+
+                    {q.type === 'text' && (
+                      <div style={{ width: '100%', display: 'flex', gap: 8 }}>
+                        <input
+                          type="text"
+                          placeholder={q.placeholder || "Type your answer..."}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.target.value.trim()) {
+                              onDecide(e.target.value.trim());
+                            }
+                          }}
+                          style={{
+                            all: 'unset', flex: 1, padding: '8px 12px', borderRadius: 8,
+                            background: theme.panel2, border: `1px solid ${theme.border}`,
+                            fontFamily: FONT_SANS, fontSize: 13, color: theme.fg,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          {decided && (
+            <div style={{
+              flex: 1, padding: '10px 14px',
+              fontFamily: FONT_MONO, fontSize: 12, color: theme.fgMuted,
+              display: 'flex', alignItems: 'center', gap: 8,
+              borderTop: `1px solid ${theme.border}`,
+              background: theme.panel2,
+            }}>
+              <IconCheck size={14} style={{ color: theme.ok }} />
+              Answered: <strong>{decision}</strong>
+            </div>
+          )}
+        </div>
+        <div style={{ marginTop: 4 }}>
+          <MessageMeta theme={theme} time={msg.time} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TypingBubble({ agent, theme }) {
   const a = AGENTS[agent];
   return (
@@ -301,4 +422,4 @@ function TypingBubble({ agent, theme }) {
   );
 }
 
-Object.assign(window, { UserBubble, AgentBubble, StatusNote, ToolBlock, ApprovalCard, TypingBubble, MessageMeta });
+Object.assign(window, { UserBubble, AgentBubble, StatusNote, ToolBlock, ApprovalCard, QuestionCard, TypingBubble, MessageMeta });
