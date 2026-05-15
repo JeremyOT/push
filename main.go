@@ -1007,7 +1007,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 								mode = "resume"
 							}
 							_ = os.WriteFile(".gemini-agent.restart", []byte(mode), 0644)
-							msg = "/exit"
+							msg = "/quit"
 						}
 
 						if msg == "/stop" && i.SessionID != "" && i.SessionID == sessionID {

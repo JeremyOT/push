@@ -72,9 +72,9 @@ go build -ldflags="-w -s" -o push main.go
 - Reduced tmux 'Enter' key delay from 500ms to 200ms for faster interaction while maintaining reliability.
 - Improved `tmux` mode reliability by increasing the delay before sending the `Enter` key to 500ms and using the `-l` (literal) flag for `send-keys` to ensure message content is delivered exactly as-is.
 - Fixed a bug in `gemini-agent` where `gemini` was being backgrounded, causing it to lose its TTY connection and fail with "no input provided via stdin"; the script now runs `gemini` in the foreground.
-- Simplified agent restart logic: replaced UNIX signal-based coordination with a local `.gemini-agent.restart` file. The `push` client now writes the restart mode ("fresh" or "resume") to this file and sends `/exit` to the `gemini-cli` tmux pane, allowing for a cleaner and more robust restart loop in the `gemini-agent` script.
+- Simplified agent restart logic: replaced UNIX signal-based coordination with a local `.gemini-agent.restart` file. The `push` client now writes the restart mode ("fresh" or "resume") to this file and sends `/quit` to the `gemini-cli` tmux pane, allowing for a cleaner and more robust restart loop in the `gemini-agent` script.
 - Updated `gemini-agent` to remove signal traps and implementation of a file-based restart check after the main Gemini process exits.
-- Updated `main.go` to handle `/restart` and `/restart resume` by writing to `.gemini-agent.restart` and forwarding `/exit` to tmux.
+- Updated `main.go` to handle `/restart` and `/restart resume` by writing to `.gemini-agent.restart` and forwarding `/quit` to tmux.
 - Improved UX by remembering the last selected agent/thread across page refreshes using `localStorage`.
 - Fixed the "Recent" sidebar section: ensured agents in this section always show as "passive" (grey dot) by supporting status overrides in the hierarchical tree component.
 - Fixed a critical regression where messages and agent metadata were missing from the UI due to mismatched SQL `SELECT` and `Scan` calls for the new `session_path` column.
@@ -125,6 +125,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Updated the restart command to use `/quit` instead of `/exit` in `main.go` and `gemini-agent` to align with Gemini's standard commands.
 - Fixed message update logic in the backend: `Message` and `DetailedMessage` are now replaced only if the incoming update is non-empty, and preserved otherwise. This correctly handles "full so far" streaming updates and prevents final status updates from wiping conversation history.
 - Refined terminal status logic: the `done` state (post-model response) is now treated as a busy state, keeping the "Stop" button and typing indicator visible until the agent explicitly returns to `ready`, `idle`, or `passive`.
 - Broadened the `Stop` button trigger to include any state that isn't explicitly "at rest" (ready, idle, passive).
