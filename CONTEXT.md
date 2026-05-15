@@ -125,7 +125,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
-- Fixed a regression in message updates: standard agent messages now correctly append (extend) their content during updates, while tool permissions continue to use replacement to maintain JSON integrity.
+- Fixed message update logic in the backend: `Message` and `DetailedMessage` are now replaced only if the incoming update is non-empty, and preserved otherwise. This correctly handles "full so far" streaming updates and prevents final status updates from wiping conversation history.
 - Refined terminal status logic: the `done` state (post-model response) is now treated as a busy state, keeping the "Stop" button and typing indicator visible until the agent explicitly returns to `ready`, `idle`, or `passive`.
 - Broadened the `Stop` button trigger to include any state that isn't explicitly "at rest" (ready, idle, passive).
 - Standardized tool permission buttons to "Allow", "Allow Session", and "Deny" with correct numeric index mapping (1, 2, 4).

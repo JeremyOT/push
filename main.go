@@ -624,15 +624,13 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
 			}
 			if !i.Replace {
-				i.Message = existingMessage + i.Message
-				// If it's an approval, we replace the JSON metadata instead of appending.
-				// Otherwise, we append for text/markdown extension.
-				if i.Kind == "approval" || existingKind == "approval" {
-					if i.DetailedMessage == "" {
-						i.DetailedMessage = existingDetailedMessage
-					}
-				} else {
-					i.DetailedMessage = existingDetailedMessage + i.DetailedMessage
+				// If new fields are empty, keep existing ones.
+				// If new fields are non-empty, assume it's a "full so far" update and replace.
+				if i.Message == "" {
+					i.Message = existingMessage
+				}
+				if i.DetailedMessage == "" {
+					i.DetailedMessage = existingDetailedMessage
 				}
 			}
 			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
