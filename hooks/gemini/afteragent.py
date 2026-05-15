@@ -4,50 +4,24 @@ import json
 import urllib.request
 import os
 
-def merge_strings(existing, update):
-    if not update:
-        return existing
-    if not existing:
-        return update
-    
-    # Find maximal overlap
-    max_overlap = 0
-    limit = min(len(existing), len(update))
-    for k in range(1, limit + 1):
-        if existing.endswith(update[:k]):
-            max_overlap = k
-    
-    return existing + update[max_overlap:]
-
 def deduplicate_response(s):
-    if not s or len(s) < 20:
+    if not s or len(s) < 100:
         return s
         
-    best_merged = s
-    min_len = len(s)
-    
-    # Try different split points to see if the string was formed by 
-    # appending an overlapping chunk.
-    # We look for a split point where the second part overlaps significantly 
-    # with the first part.
-    for i in range(len(s) // 4, len(s)):
-        existing = s[:i]
-        update = s[i:]
-        
-        # Check overlap
-        limit = min(len(existing), len(update))
-        max_overlap = 0
-        for k in range(1, limit + 1):
-            if existing.endswith(update[:k]):
-                max_overlap = k
-        
-        if max_overlap > 15: # Significant overlap threshold
-            merged = existing + update[max_overlap:]
-            if len(merged) < min_len:
-                min_len = len(merged)
-                best_merged = merged
-                
-    return best_merged
+    # Find the longest suffix that appears earlier in the string.
+    # Bug-induced duplication often results in the full message (or a large part of it)
+    # being appended to itself. By finding the first occurrence of a long repeating 
+    # suffix, we can identify the true end of the original message.
+    min_length = 50
+    for length in range(len(s) - min_length, min_length - 1, -1):
+        suffix = s[-length:]
+        # Look for this suffix earlier in the string.
+        # It must end before the current suffix starts to be a repeat.
+        first_idx = s.find(suffix, 0, len(s) - length)
+        if first_idx != -1:
+            return s[:first_idx + length].strip()
+            
+    return s
 
 def main():
     try:
@@ -57,9 +31,13 @@ def main():
             return
             
         # Log input for debugging
-        with open(os.path.expanduser("~/aa.json"), "a") as f:
-            f.write("\n--- " + str(os.getpid()) + " ---\n")
-            f.write(raw_input)
+        log_path = os.path.expanduser("~/aa.json")
+        try:
+            with open(log_path, "a") as f:
+                f.write("\n--- " + str(os.getpid()) + " ---\n")
+                f.write(raw_input)
+        except Exception:
+            pass
             
         data = json.loads(raw_input)
     except Exception:
