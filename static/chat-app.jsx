@@ -469,7 +469,10 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const renderMessage = (m) => {
     if (m.kind === 'user') return <UserBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
-    if (m.kind === 'status') return <StatusNote key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
+    if (m.kind === 'status') {
+        if (!m.text) return null;
+        return <StatusNote key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
+    }
     if (m.kind === 'tool') return (
       <ToolBlock key={m.id} msg={m} theme={theme}
         expanded={!!expandedTools[m.id]}
@@ -486,7 +489,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         onDecide={(d) => handleDecide(m.id, d)} />
     );
     if (m.kind === 'agent') {
-        if (!m.text && (m.title?.includes('ToolPermission') || m.title?.includes('Question'))) return null;
+        if (!m.text) return null;
     }
     return <AgentBubble key={m.id} msg={m} theme={theme} onCopy={() => showToast('Copied to clipboard')} />;
   };

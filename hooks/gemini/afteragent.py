@@ -11,9 +11,10 @@ def main():
         if not raw_input.strip():
             return
             
-        # Log input for debugging (matching original script behavior)
-        #with open(os.path.expanduser("~/aa.json"), "w") as f:
-        #   f.write(raw_input)
+        # Log input for debugging
+        with open(os.path.expanduser("~/aa.json"), "a") as f:
+            f.write("\n--- " + str(os.getpid()) + " ---\n")
+            f.write(raw_input)
             
         data = json.loads(raw_input)
     except Exception:
@@ -28,17 +29,20 @@ def main():
         message = f"{prompt_response}"
         title = wd if wd else "Gemini"
         
+        # Send only a status update to signal the end of the turn.
+        # Repeating the full content here causes duplication because this hook 
+        # doesn't use the stable identifier from aftermodel.py.
         payload = {
-            "message": message[:50],
+            "message": "",
             "title": title,
             "agent": "gemini",
-            "kind": "agent",
+            "kind": "status",
             "status": "r",
             "session_id": session_id,
             "session_path": cwd,
             "link": "",
-            "detailed_message": message,
-            "quiet": False #True
+            "detailed_message": "",
+            "quiet": True
         }
         
         url = "http://127.0.0.1:8089/interactions"
