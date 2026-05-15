@@ -4,23 +4,32 @@ import json
 import urllib.request
 import os
 
+import re
+
 def deduplicate_response(s):
-    if not s or len(s) < 100:
+    if not s:
         return s
         
-    # Find the longest suffix that appears earlier in the string.
-    # Bug-induced duplication often results in the full message (or a large part of it)
-    # being appended to itself. By finding the first occurrence of a long repeating 
-    # suffix, we can identify the true end of the original message.
-    min_length = 50
-    for length in range(len(s) - min_length, min_length - 1, -1):
-        suffix = s[-length:]
-        # Look for this suffix earlier in the string.
-        # It must end before the current suffix starts to be a repeat.
-        first_idx = s.find(suffix, 0, len(s) - length)
-        if first_idx != -1:
-            return s[:first_idx + length].strip()
-            
+    # Find all non-whitespace tokens and their spans
+    tokens = list(re.finditer(r'\S+', s))
+    if len(tokens) < 40:
+        return s
+        
+    token_texts = [m.group(0) for m in tokens]
+    num_tokens = len(token_texts)
+    
+    # Look for the longest repeating suffix of tokens.
+    # We try lengths from half the total tokens down to 20.
+    for length in range(num_tokens // 2, 19, -1):
+        suffix = token_texts[-length:]
+        # Search for this token sequence earlier in the message
+        for i in range(num_tokens - 2 * length + 1):
+            if token_texts[i:i+length] == suffix:
+                # Found a significant repeating sequence!
+                # The cut point is the end of the first occurrence.
+                cut_point = tokens[i + length - 1].end()
+                return s[:cut_point].strip()
+                
     return s
 
 def main():
