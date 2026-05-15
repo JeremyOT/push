@@ -125,11 +125,12 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed duplication in the final `AfterAgent` message:
+    - Implemented a robust "re-merge" deduplication algorithm in `afteragent.py` that identifies and removes overlapping segments from the accumulated `prompt_response`.
+    - This ensures the final agent bubble and push notification are clean even if the CLI provides overlapping chunks.
 - Simplified Gemini hooks:
     - `aftermodel.py` updates in place using a stable identifier, but all its updates are "quiet" to avoid streaming push notification noise.
     - `afteragent.py` sends the final model response as a new `agent` message bubble, triggering the final push notification with full content.
-- Unified agent response bubbles and fixed push notifications by sharing state between hooks (Reverted):
-    - Reverted the identifier sharing via `/tmp` between `aftermodel.py` and `afteragent.py` to keep the implementation simple.
 - Fixed a bug where Gemini agent messages could be left in a "working" state and truncated:
     - Enhanced `main.go` to use transactions for identifier-based interaction updates, preventing race conditions during rapid streaming.
     - Improved `mergeStrings` in `main.go` to robustly handle cumulative and overlapping message updates, ensuring text is never accidentally duplicated or ignored.

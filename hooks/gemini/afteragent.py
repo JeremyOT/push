@@ -4,6 +4,51 @@ import json
 import urllib.request
 import os
 
+def merge_strings(existing, update):
+    if not update:
+        return existing
+    if not existing:
+        return update
+    
+    # Find maximal overlap
+    max_overlap = 0
+    limit = min(len(existing), len(update))
+    for k in range(1, limit + 1):
+        if existing.endswith(update[:k]):
+            max_overlap = k
+    
+    return existing + update[max_overlap:]
+
+def deduplicate_response(s):
+    if not s or len(s) < 20:
+        return s
+        
+    best_merged = s
+    min_len = len(s)
+    
+    # Try different split points to see if the string was formed by 
+    # appending an overlapping chunk.
+    # We look for a split point where the second part overlaps significantly 
+    # with the first part.
+    for i in range(len(s) // 4, len(s)):
+        existing = s[:i]
+        update = s[i:]
+        
+        # Check overlap
+        limit = min(len(existing), len(update))
+        max_overlap = 0
+        for k in range(1, limit + 1):
+            if existing.endswith(update[:k]):
+                max_overlap = k
+        
+        if max_overlap > 15: # Significant overlap threshold
+            merged = existing + update[max_overlap:]
+            if len(merged) < min_len:
+                min_len = len(merged)
+                best_merged = merged
+                
+    return best_merged
+
 def main():
     try:
         # Read input from stdin
@@ -26,8 +71,11 @@ def main():
         session_id = data.get("session_id", "")
         prompt_response = data.get("prompt_response", "").strip()
         
-        # Use the actual model response if available, otherwise fallback to "Turn complete"
-        message = prompt_response if prompt_response else "Turn complete"
+        # Deduplicate response
+        message = deduplicate_response(prompt_response)
+        if not message:
+            message = "Turn complete"
+        
         title = wd if wd else "Gemini"
         
         payload = {
