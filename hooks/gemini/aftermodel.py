@@ -72,9 +72,6 @@ def main():
              status = "w"
 
         message = short_response
-        if wd and message:
-            message = f"{wd}: {message}"
-            
         detailed_message = f"{message_content}"
         title = wd if wd else "Gemini"
 

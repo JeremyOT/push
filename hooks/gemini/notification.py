@@ -32,7 +32,7 @@ def main():
 
         msg_text = data.get("message", "")
         
-        message = f"{wd}: {msg_text}"
+        message = msg_text
         title = f"Gemini - {notification_type}"
         
         payload = {

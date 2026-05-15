@@ -375,6 +375,14 @@ func resizeImage(src image.Image, size int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func longestCommonPrefix(a, b string) string {
+	i := 0
+	for i < len(a) && i < len(b) && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
+}
+
 func initDB(db *sql.DB) error {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS interactions (
@@ -624,13 +632,20 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
 			}
 			if !i.Replace {
-				// If new fields are empty, keep existing ones.
-				// If new fields are non-empty, assume it's a "full so far" update and replace.
-				if i.Message == "" {
-					i.Message = existingMessage
-				}
-				if i.DetailedMessage == "" {
-					i.DetailedMessage = existingDetailedMessage
+				// Longest Common Prefix stripping to handle both "full-so-far" 
+				// and "incremental-with-repetitive-prefix" streaming patterns.
+				lcpMsg := longestCommonPrefix(existingMessage, i.Message)
+				i.Message = existingMessage + i.Message[len(lcpMsg):]
+
+				if i.Kind == "approval" || existingKind == "approval" || strings.Contains(i.Title, "ToolPermission") {
+					// Approvals contain JSON metadata. Appending would break the JSON structure.
+					// Replace if new content is provided, otherwise keep existing.
+					if i.DetailedMessage == "" {
+						i.DetailedMessage = existingDetailedMessage
+					}
+				} else {
+					lcpDetailed := longestCommonPrefix(existingDetailedMessage, i.DetailedMessage)
+					i.DetailedMessage = existingDetailedMessage + i.DetailedMessage[len(lcpDetailed):]
 				}
 			}
 			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
