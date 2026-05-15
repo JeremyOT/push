@@ -26,25 +26,12 @@ def main():
         session_id = data.get("session_id", "")
         prompt_response = data.get("prompt_response", "").strip()
         
-        # Try to get identifier from aftermodel.py
-        identifier = ""
-        if session_id:
-            id_path = os.path.join("/tmp", f"gemini-ident-{session_id}")
-            if os.path.exists(id_path):
-                try:
-                    with open(id_path, "r") as f:
-                        identifier = f.read().strip()
-                    # Clean up
-                    os.remove(id_path)
-                except Exception:
-                    pass
-
         # Use the actual model response if available, otherwise fallback to "Turn complete"
         message = prompt_response if prompt_response else "Turn complete"
         title = wd if wd else "Gemini"
         
         payload = {
-            "identifier": identifier,
+            "identifier": "", # New message
             "message": message[:50],
             "title": title,
             "agent": "gemini",

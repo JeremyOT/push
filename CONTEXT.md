@@ -125,14 +125,11 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
-- Unified agent response bubbles and fixed push notifications by sharing state between hooks:
-    - Updated `aftermodel.py` to persist its stable message identifier to a temporary file in `/tmp`, keyed by `session_id`.
-    - Updated `afteragent.py` to retrieve this identifier, allowing it to target and update the same response bubble rather than creating a separate system status note.
-    - Changed `afteragent.py` message kind to `agent` to ensure it renders as a regular message bubble.
-    - Enabled the final push notification in `afteragent.py` (`quiet: false`) with the full turn content, while keeping all incremental `aftermodel` updates silent.
-- Fixed push notification noise and restored full content in turn summaries:
-    - Updated `aftermodel.py` to ensure all incremental model updates are "quiet", preventing multiple empty push notifications during streaming.
-    - Updated `afteragent.py` to restore the full model response in the final "Turn complete" notification.
+- Simplified Gemini hooks:
+    - `aftermodel.py` updates in place using a stable identifier, but all its updates are "quiet" to avoid streaming push notification noise.
+    - `afteragent.py` sends the final model response as a new `agent` message bubble, triggering the final push notification with full content.
+- Unified agent response bubbles and fixed push notifications by sharing state between hooks (Reverted):
+    - Reverted the identifier sharing via `/tmp` between `aftermodel.py` and `afteragent.py` to keep the implementation simple.
 - Fixed a bug where Gemini agent messages could be left in a "working" state and truncated:
     - Enhanced `main.go` to use transactions for identifier-based interaction updates, preventing race conditions during rapid streaming.
     - Improved `mergeStrings` in `main.go` to robustly handle cumulative and overlapping message updates, ensuring text is never accidentally duplicated or ignored.

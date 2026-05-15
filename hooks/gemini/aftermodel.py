@@ -45,15 +45,6 @@ def main():
             req_str = json.dumps(filtered_request, sort_keys=True)
             identifier = f"gemini-req-{hashlib.sha256(req_str.encode()).hexdigest()[:16]}"
 
-        # Save identifier for afteragent.py
-        if session_id and identifier:
-            id_path = os.path.join("/tmp", f"gemini-ident-{session_id}")
-            try:
-                with open(id_path, "w") as f:
-                    f.write(identifier)
-            except Exception:
-                pass
-
         # Logic to get the current model message
         message_content = short_response
         candidates = llm_response.get("candidates", [])
