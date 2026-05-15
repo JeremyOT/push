@@ -26,14 +26,12 @@ def main():
         session_id = data.get("session_id", "")
         prompt_response = data.get("prompt_response", "").strip()
         
-        message = f"{prompt_response}"
+        # Use the actual model response if available, otherwise fallback to "Turn complete"
+        message = prompt_response if prompt_response else "Turn complete"
         title = wd if wd else "Gemini"
         
-        # Send only a status update to signal the end of the turn.
-        # Repeating the full content here causes duplication because this hook 
-        # doesn't use the stable identifier from aftermodel.py.
         payload = {
-            "message": "Turn complete",
+            "message": message[:50],
             "title": title,
             "agent": "gemini",
             "kind": "status",
@@ -41,8 +39,8 @@ def main():
             "session_id": session_id,
             "session_path": cwd,
             "link": "",
-            "detailed_message": "",
-            "quiet": True
+            "detailed_message": message,
+            "quiet": False
         }
         
         url = "http://127.0.0.1:8089/interactions"

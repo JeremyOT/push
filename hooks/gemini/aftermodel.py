@@ -85,7 +85,7 @@ def main():
                     "status": "d",
                     "session_id": session_id,
                     "session_path": cwd,
-                    "quiet": False
+                    "quiet": True
                 }
             else:
                 return
@@ -102,7 +102,7 @@ def main():
                 "session_path": cwd,
                 "link": "",
                 "detailed_message": detailed_message,
-                "quiet": status == "w"
+                "quiet": True
             }
         
         url = "http://127.0.0.1:8089/interactions"
