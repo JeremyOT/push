@@ -126,8 +126,9 @@ go build -ldflags="-w -s" -o push main.go
 
 ## Recent Changes
 - Fixed persistent duplication in the final `AfterAgent` message:
-    - Implemented an aggressive "repeating suffix" deduplication algorithm in `afteragent.py` that identifies the longest repeating suffix (minimum 50 characters) and truncates the message at the first occurrence.
-    - This approach is robust against internal whitespace differences and ensures clean transcript delivery even when the CLI provides nearly-doubled messages.
+    - Implemented a robust "token-based" (word-sequence) deduplication algorithm in `afteragent.py`.
+    - It identifies the longest repeating sequence of words (minimum 20) at the end of the message and truncates at the first occurrence.
+    - This approach is highly robust against imperfect duplications and whitespace variations introduced by the CLI.
 - Simplified Gemini hooks:
     - `aftermodel.py` updates in place using a stable identifier, but all its updates are "quiet" to avoid streaming push notification noise.
     - `afteragent.py` sends the final model response as a new `agent` message bubble, triggering the final push notification with full content.
