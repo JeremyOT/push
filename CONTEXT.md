@@ -125,6 +125,11 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed a bug where Gemini agent messages could be left in a "working" state and truncated:
+    - Enhanced `main.go` to use transactions for identifier-based interaction updates, preventing race conditions during rapid streaming.
+    - Improved `mergeStrings` in `main.go` to robustly handle cumulative and overlapping message updates, ensuring text is never accidentally duplicated or ignored.
+    - Implemented automatic finalization: when a "ready" status message arrives (e.g., from `afteragent.py`), the backend now automatically marks any previous "working" agent messages in that session as "done".
+    - Updated `aftermodel.py` hook to more reliably detect turn completion by supporting a broader range of finish reasons (including integer codes) and ensuring final status updates are always transmitted.
 - Updated the restart command to use `/quit` instead of `/exit` in `main.go` and `gemini-agent` to align with Gemini's standard commands.
 - Fixed message update logic in the backend: `Message` and `DetailedMessage` are now replaced only if the incoming update is non-empty, and preserved otherwise. This correctly handles "full so far" streaming updates and prevents final status updates from wiping conversation history.
 - Refined terminal status logic: the `done` state (post-model response) is now treated as a busy state, keeping the "Stop" button and typing indicator visible until the agent explicitly returns to `ready`, `idle`, or `passive`.

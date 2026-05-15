@@ -383,6 +383,10 @@ func mergeStrings(existing, update string) string {
 		return update
 	}
 
+	if strings.Contains(existing, update) {
+		return existing
+	}
+
 	er := []rune(existing)
 	ur := []rune(update)
 
@@ -606,6 +610,12 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		fillMissingMetadata(db, i)
 	}
 	if i.Identifier != "" {
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
 		// Check if it already exists
 		var id int64
 		var timestamp time.Time
@@ -619,7 +629,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingSessionID string
 		var existingSessionPath string
 		var existingIsUser bool
-		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
+		err = tx.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
 		if err == nil {
 			// Exists, update it
 			if i.Title == "" {
@@ -643,29 +653,11 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			if i.SessionPath == "" {
 				i.SessionPath = existingSessionPath
 			}
-			// For boolean fields, we only merge if the new value is false and existing was true?
-			// Actually, it's better to just check if they were provided in JSON.
-			// But Go unmarshals missing bools as false.
-			// Given the current hooks, we can assume if they are true, they should stay true?
-			// No, that's not right.
-			// Let's assume for now that if we are updating by identifier, we want to keep the existing is_user.
 			i.IsUser = existingIsUser
-			// For quiet, we might want to update it. aftermodel.py sends it.
-			// If it's missing in the update request, we might want to keep it.
-			// But how to detect if it's missing? We can't easily with the current struct.
-			// Let's just merge it if it was not in the request?
-			// For now, let's just make sure we are not accidentally clearing it if it was true.
-			// if !i.Quiet && existingQuiet {
-			//	// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
-			// }
 			if !i.Replace {
-				// Use maximal overlap merging to handle both "full-so-far" 
-				// and "incremental-with-overlap" streaming patterns precisely.
 				i.Message = mergeStrings(existingMessage, i.Message)
 
 				if i.Kind == "approval" || existingKind == "approval" || strings.Contains(i.Title, "ToolPermission") {
-					// Approvals contain JSON metadata. Merging would break the JSON structure.
-					// Replace if new content is provided, otherwise keep existing.
 					if i.DetailedMessage == "" {
 						i.DetailedMessage = existingDetailedMessage
 					}
@@ -673,26 +665,47 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 					i.DetailedMessage = mergeStrings(existingDetailedMessage, i.DetailedMessage)
 				}
 			}
-			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
+			_, err = tx.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
 			if err != nil {
 				return err
 			}
+			if err := tx.Commit(); err != nil {
+				return err
+			}
+
+			// If this was a "ready" status message, find the last "agent" message in the same session
+			// and mark it as "done" if it's still "working".
+			if i.Kind == "status" && i.Status == "r" && i.SessionID != "" {
+				_, _ = db.Exec("UPDATE interactions SET status = 'd' WHERE session_id = ? AND kind = 'agent' AND status = 'w' AND id < ?", i.SessionID, id)
+			}
+
 			i.ID = id
 			i.Timestamp = timestamp
 			i.Update = true
 		} else if err == sql.ErrNoRows {
 			// Not found, insert new
-			res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
+			res, err := tx.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
 			if err != nil {
 				return err
 			}
+			if err := tx.Commit(); err != nil {
+				return err
+			}
 			id, _ := res.LastInsertId()
+
+			// If this was a "ready" status message, find the last "agent" message in the same session
+			// and mark it as "done" if it's still "working".
+			if i.Kind == "status" && i.Status == "r" && i.SessionID != "" {
+				_, _ = db.Exec("UPDATE interactions SET status = 'd' WHERE session_id = ? AND kind = 'agent' AND status = 'w' AND id < ?", i.SessionID, id)
+			}
+
 			i.ID = id
 			i.Timestamp = time.Now().UTC()
 		} else {
 			return err
 		}
 	} else {
+
 		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
 		if err != nil {
 			return err

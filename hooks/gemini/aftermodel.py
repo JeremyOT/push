@@ -60,13 +60,11 @@ def main():
         if candidates:
             finish_reason = candidates[0].get("finishReason", "null")
 
-        # Check exit conditions
-        #if not finish_reason or short_response == "null":
-        #    return
-
         status = "w"
-        # STOP, MAX_TOKENS, SAFETY, RECITATION, OTHER are possible
-        if finish_reason in ["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER"]:
+        # Handle both string and integer finish reasons
+        # STOP=1, MAX_TOKENS=2, SAFETY=3, RECITATION=4, OTHER=5 in some API versions
+        done_reasons = ["STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER", 1, 2, 3, 4, 5]
+        if finish_reason in done_reasons:
              status = "d"
         else:
              status = "w"
@@ -89,7 +87,6 @@ def main():
                     "session_path": cwd,
                     "quiet": False
                 }
-                # We can still send other metadata if needed
             else:
                 return
         else:
