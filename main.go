@@ -601,6 +601,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 }
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
+	var existingQuiet bool
 	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent") {
 		fillMissingMetadata(db, i)
 	}
@@ -618,7 +619,6 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingSessionID string
 		var existingSessionPath string
 		var existingIsUser bool
-		var existingQuiet bool
 		err := db.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
 		if err == nil {
 			// Exists, update it
@@ -655,9 +655,9 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			// But how to detect if it's missing? We can't easily with the current struct.
 			// Let's just merge it if it was not in the request?
 			// For now, let's just make sure we are not accidentally clearing it if it was true.
-			if !i.Quiet && existingQuiet {
-				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
-			}
+			// if !i.Quiet && existingQuiet {
+			//	// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
+			// }
 			if !i.Replace {
 				// Use maximal overlap merging to handle both "full-so-far" 
 				// and "incremental-with-overlap" streaming patterns precisely.
@@ -702,9 +702,12 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		i.Timestamp = time.Now().UTC()
 	}
 
-	// Trigger Push for non-user messages only, and only if not quiet and not an update
-	if !i.IsUser && !i.Quiet && !i.Update {
-		go sendPushNotifications(db, i.Title, i.Message, i.Link)
+	// Trigger Push for non-user messages only, and only if not quiet.
+	// For updates, we only trigger if it's the first time it becomes non-quiet.
+	if !i.IsUser && !i.Quiet {
+		if !i.Update || existingQuiet {
+			go sendPushNotifications(db, i.Title, i.Message, i.Link)
+		}
 	}
 
 	// Handle global /new-agent command

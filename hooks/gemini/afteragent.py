@@ -33,7 +33,7 @@ def main():
         # Repeating the full content here causes duplication because this hook 
         # doesn't use the stable identifier from aftermodel.py.
         payload = {
-            "message": "",
+            "message": "Turn complete",
             "title": title,
             "agent": "gemini",
             "kind": "status",
