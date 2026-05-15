@@ -375,12 +375,39 @@ func resizeImage(src image.Image, size int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func longestCommonPrefix(a, b string) string {
-	i := 0
-	for i < len(a) && i < len(b) && a[i] == b[i] {
-		i++
+func mergeStrings(existing, update string) string {
+	if update == "" {
+		return existing
 	}
-	return a[:i]
+	if existing == "" {
+		return update
+	}
+
+	er := []rune(existing)
+	ur := []rune(update)
+
+	// Find the maximal overlap between the end of existing and the start of ur.
+	// We want to find the largest k such that er[len(er)-k:] == ur[:k].
+	maxOverlap := 0
+	limit := len(er)
+	if len(ur) < limit {
+		limit = len(ur)
+	}
+
+	for k := 1; k <= limit; k++ {
+		match := true
+		for i := 0; i < k; i++ {
+			if er[len(er)-k+i] != ur[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			maxOverlap = k
+		}
+	}
+
+	return existing + string(ur[maxOverlap:])
 }
 
 func initDB(db *sql.DB) error {
@@ -632,20 +659,18 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				// i.Quiet = existingQuiet // Only if we want to preserve "quiet"
 			}
 			if !i.Replace {
-				// Longest Common Prefix stripping to handle both "full-so-far" 
-				// and "incremental-with-repetitive-prefix" streaming patterns.
-				lcpMsg := longestCommonPrefix(existingMessage, i.Message)
-				i.Message = existingMessage + i.Message[len(lcpMsg):]
+				// Use maximal overlap merging to handle both "full-so-far" 
+				// and "incremental-with-overlap" streaming patterns precisely.
+				i.Message = mergeStrings(existingMessage, i.Message)
 
 				if i.Kind == "approval" || existingKind == "approval" || strings.Contains(i.Title, "ToolPermission") {
-					// Approvals contain JSON metadata. Appending would break the JSON structure.
+					// Approvals contain JSON metadata. Merging would break the JSON structure.
 					// Replace if new content is provided, otherwise keep existing.
 					if i.DetailedMessage == "" {
 						i.DetailedMessage = existingDetailedMessage
 					}
 				} else {
-					lcpDetailed := longestCommonPrefix(existingDetailedMessage, i.DetailedMessage)
-					i.DetailedMessage = existingDetailedMessage + i.DetailedMessage[len(lcpDetailed):]
+					i.DetailedMessage = mergeStrings(existingDetailedMessage, i.DetailedMessage)
 				}
 			}
 			_, err = db.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
