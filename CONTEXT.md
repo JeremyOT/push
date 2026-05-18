@@ -125,6 +125,10 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Updated the chat composer keyboard behavior:
+    - Pressing `Return` now adds a new line in the textarea instead of sending the message.
+    - Pressing `Cmd+Return` (or `Ctrl+Return`) now sends the message.
+    - Updated the "Send" button tooltip to reflect the new `⌘↵` shortcut.
 - Fixed persistent duplication in the final `AfterAgent` message:
     - Implemented a robust "token-based" (word-sequence) deduplication algorithm in `afteragent.py`.
     - It identifies the longest repeating sequence of words (minimum 20) at the end of the message and truncates at the first occurrence.

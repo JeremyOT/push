@@ -86,7 +86,7 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault();
               if (isWorking) onStop?.();
               else send();
@@ -125,7 +125,7 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
             flexShrink: 0,
             transition: 'background 0.15s',
             boxShadow: value.trim() ? `0 4px 12px ${agentColor}44` : 'none',
-          }} title="Send (Enter)">
+          }} title="Send (⌘↵)">
             <IconArrowUp size={15} />
           </button>
         )}
