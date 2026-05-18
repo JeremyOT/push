@@ -125,14 +125,14 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed persistent duplication in the final `AfterAgent` message:
+    - Implemented a robust "dense-string" deduplication algorithm in `afteragent.py`.
+    - It normalizes the message by removing all whitespace and identifies the longest repeating suffix in this dense form.
+    - By mapping back to original indices, it precisely truncates duplications while remaining completely immune to whitespace and line-break variations.
 - Updated the chat composer keyboard behavior:
     - Pressing `Return` now adds a new line in the textarea instead of sending the message.
     - Pressing `Cmd+Return` (or `Ctrl+Return`) now sends the message.
     - Updated the "Send" button tooltip to reflect the new `⌘↵` shortcut.
-- Fixed persistent duplication in the final `AfterAgent` message:
-    - Implemented a robust "token-based" (word-sequence) deduplication algorithm in `afteragent.py`.
-    - It identifies the longest repeating sequence of words (minimum 20) at the end of the message and truncates at the first occurrence.
-    - This approach is highly robust against imperfect duplications and whitespace variations introduced by the CLI.
 - Simplified Gemini hooks:
     - `aftermodel.py` updates in place using a stable identifier, but all its updates are "quiet" to avoid streaming push notification noise.
     - `afteragent.py` sends the final model response as a new `agent` message bubble, triggering the final push notification with full content.

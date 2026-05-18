@@ -4,32 +4,35 @@ import json
 import urllib.request
 import os
 
-import re
-
 def deduplicate_response(s):
     if not s:
         return s
         
-    # Find all non-whitespace tokens and their spans
-    tokens = list(re.finditer(r'\S+', s))
-    if len(tokens) < 40:
+    # Create normalized version (no whitespace) with index mapping
+    normalized = []
+    for i, char in enumerate(s):
+        if not char.isspace():
+            normalized.append((char, i))
+            
+    if len(normalized) < 40:
         return s
         
-    token_texts = [m.group(0) for m in tokens]
-    num_tokens = len(token_texts)
+    dense_str = "".join(c[0] for c in normalized)
+    num_chars = len(dense_str)
     
-    # Look for the longest repeating suffix of tokens.
-    # We try lengths from half the total tokens down to 20.
-    for length in range(num_tokens // 2, 19, -1):
-        suffix = token_texts[-length:]
-        # Search for this token sequence earlier in the message
-        for i in range(num_tokens - 2 * length + 1):
-            if token_texts[i:i+length] == suffix:
-                # Found a significant repeating sequence!
-                # The cut point is the end of the first occurrence.
-                cut_point = tokens[i + length - 1].end()
-                return s[:cut_point].strip()
-                
+    # Find the longest repeating suffix in the dense string.
+    # We try lengths from half the total non-whitespace characters down to 30.
+    for length in range(num_chars // 2, 29, -1):
+        suffix = dense_str[-length:]
+        # Search for this suffix earlier in the dense string.
+        first_idx = dense_str.find(suffix, 0, num_chars - length)
+        if first_idx != -1:
+            # Found a match in the dense string!
+            # The cut point is the original index of the last character 
+            # of the first occurrence.
+            orig_idx = normalized[first_idx + length - 1][1]
+            return s[:orig_idx + 1].strip()
+            
     return s
 
 def main():
