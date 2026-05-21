@@ -117,14 +117,18 @@ func main() {
 	sessionName := flag.String("session-name", "", "Session name (display title) for the CLI service")
 	sessionPath := flag.String("session-path", "", "Working directory path for the CLI service")
 	modelName := flag.String("model", "", "Model name for the CLI service")
-	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded gemini-agent script")
-	resumeAgent := flag.Bool("resume", false, "Resume the last gemini-agent session")
-	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass -y to gemini)")
+	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded agent script with gemini")
+	antigravityAgent := flag.Bool("antigravity", false, "Run the embedded agent script with agy")
+	resumeAgent := flag.Bool("resume", false, "Resume the last agent session")
+	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass -y to agent)")
 	hermesAgent := flag.String("hermes-agent", "", "URL of the Hermes Agent API for SSE proxy")
 	flag.Parse()
 
-	if *geminiAgent {
+	if *geminiAgent || *antigravityAgent {
 		var agentArgs []string
+		if *antigravityAgent {
+			agentArgs = append(agentArgs, "--agent", "agy")
+		}
 		if *resumeAgent {
 			agentArgs = append(agentArgs, "--resume")
 		}
@@ -606,7 +610,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
 	var existingQuiet bool
-	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent") {
+	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Antigravity" || i.Title == "Remote" || i.Title == "CLI Agent") {
 		fillMissingMetadata(db, i)
 	}
 	if i.Identifier != "" {
@@ -795,13 +799,13 @@ func fillMissingMetadata(db *sql.DB, i *Interaction) {
 			i.Agent = existingAgent
 		}
 		// Only inherit title if current is generic
-		if i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude" {
+		if i.Title == "" || i.Title == "Gemini" || i.Title == "Antigravity" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude" {
 			i.Title = existingTitle
 		}
 	} else {
 		// Try again without the session_path constraint if we still need title/agent
-		_ = db.QueryRow(fmt.Sprintf("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND agent != 'tmux' AND title NOT IN (%s) AND (title != '' AND title != 'Gemini' AND title != 'Remote' AND title != 'CLI Agent' AND title != 'Hermes Agent' AND title != 'Claude') ORDER BY id DESC LIMIT 1", systemTitles), i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
-		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude") {
+		_ = db.QueryRow(fmt.Sprintf("SELECT title, agent, session_path FROM interactions WHERE session_id = ? AND agent != 'tmux' AND title NOT IN (%s) AND (title != '' AND title != 'Gemini' AND title != 'Antigravity' AND title != 'Remote' AND title != 'CLI Agent' AND title != 'Hermes Agent' AND title != 'Claude') ORDER BY id DESC LIMIT 1", systemTitles), i.SessionID).Scan(&existingTitle, &existingAgent, &existingSessionPath)
+		if existingTitle != "" && (i.Title == "" || i.Title == "Gemini" || i.Title == "Antigravity" || i.Title == "Remote" || i.Title == "CLI Agent" || i.Title == "Hermes Agent" || i.Title == "Claude") {
 			i.Title = existingTitle
 		}
 		if existingAgent != "" && (i.Agent == "" || i.Agent == "remote") {
@@ -875,6 +879,8 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 	if model != "" {
 		if strings.Contains(strings.ToLower(model), "gemini") {
 			agent = "gemini"
+		} else if strings.Contains(strings.ToLower(model), "antigravity") || strings.Contains(strings.ToLower(model), "agy") {
+			agent = "antigravity"
 		} else if strings.Contains(strings.ToLower(model), "claude") {
 			agent = "claude"
 		}
@@ -1059,7 +1065,11 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 								}
 							}
 
-							args := []string{"new-window", "-n", windowName, "-c", newPath, "--", exe, "--address", address, "--gemini-agent"}
+							agentFlag := "--gemini-agent"
+							if agent == "antigravity" {
+								agentFlag = "--antigravity"
+							}
+							args := []string{"new-window", "-n", windowName, "-c", newPath, "--", exe, "--address", address, agentFlag}
 							if target != "" {
 								// If target was a path, use the base name for the agent name
 								args = append(args, filepath.Base(target))

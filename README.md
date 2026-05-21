@@ -60,10 +60,10 @@ You can send a quick message without starting the server or a persistent CLI ses
 ./push --address=localhost:8089 -t "System Alert" -m "Memory usage is high"
 ```
 
-Gemini Agent Integration
-------------------------
+Gemini & Antigravity Agent Integration
+------------------------------------
 
-The `push` binary includes the `gemini-agent` logic embedded directly, providing a seamless way to connect a `gemini-cli` session to the Push app for real-time 2-way communication.
+The `push` binary includes the `gemini-agent` logic embedded directly, providing a seamless way to connect a `gemini-cli` or `agy` session to the Push app for real-time 2-way communication.
 
 ### Usage
 
@@ -71,11 +71,13 @@ Run the agent from within a `tmux` session:
 
 ```bash
 ./push --gemini-agent [session-name] [--resume] [--yolo]
+# OR
+./push --antigravity [session-name] [--resume] [--yolo]
 ```
 
 *   **`session-name`**: (Optional) A display name for the session. Defaults to the current directory name.
-*   **`--resume`**: Resume the latest `gemini-cli` session.
-*   **`--yolo`**: Pass the `-y` flag to `gemini-cli` for autonomous execution.
+*   **`--resume`**: Resume the latest session.
+*   **`--yolo`**: Pass the YOLO flag to the agent for autonomous execution (`-y` for gemini, `--dangerously-skip-permissions` for agy).
 
 ### How it Works
 

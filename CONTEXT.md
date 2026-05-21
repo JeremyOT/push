@@ -25,6 +25,10 @@ The application has been updated to support a client mode for sending messages d
     - `jsonr`: Text input and NDJSON output.
     - `tmux`: Forwards user messages to a specified tmux pane. Can optionally specify a client ID using `tmux:client_id` to only process messages prefixed with `client_id ` or `client_id: `.
 - `-tmux-target`: Target tmux pane for `tmux` mode (e.g., session:window.pane).
+- `-gemini-agent`: Run the embedded agent script with Gemini.
+- `-antigravity`: Run the embedded agent script with Antigravity (agy).
+- `-resume`: Resume the last agent session.
+- `-yolo`: Enable YOLO mode (pass appropriate flags to the agent).
 
 ### Commands
 The following commands can be sent from the web UI to an active agent session:
@@ -52,6 +56,11 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented `--antigravity` flag to support the Antigravity CLI (`agy`) as an alternative to `gemini-cli`.
+- Refactored the embedded agent script to be generic and support multiple agents (`gemini`, `agy`).
+- Added support for `--dangerously-skip-permissions` when using `agy` in YOLO mode.
+- Installed and configured project-specific and global hooks for Antigravity by mirroring the existing Gemini hooks and adapting them for the new agent name and identifier prefix.
+- Updated `README.md` and `CONTEXT.md` documentation to reflect the new Antigravity integration.
 - Refactored interaction metadata to include an explicit `kind` field (question, approval, agent, status) for robust message rendering, eliminating fragile title-based parsing.
 - Updated Gemini CLI hooks (`BeforeTool`, `Notification`) to explicitly report message `kind`, ensuring questions and tool permissions are always correctly identified.
 - Enhanced remote tool approval: the Push UI now supports the full range of Gemini CLI options (Allow Once, Allow Session, Allow Forever, Deny) with correct character mappings for remote terminal injection.

@@ -1049,11 +1049,30 @@ func TestRunCliClientMetadata(t *testing.T) {
 	if reg.Agent != "gemini" {
 		t.Errorf("Expected agent gemini, got %s", reg.Agent)
 	}
+
 	if reg.SessionID != "sess-999" {
 		t.Errorf("Expected session_id sess-999, got %s", reg.SessionID)
 	}
 	if !strings.Contains(reg.Message, "Special Session") {
 		t.Errorf("Expected message to contain 'Special Session', got %s", reg.Message)
+	}
+
+	// Test Antigravity detection
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	var stdout2, stderr2 bytes.Buffer
+	stdinReader2 := strings.NewReader("")
+	go runCliClient(ctx2, addr, "text", "", "sess-456", "Agy Session", "/tmp", "agy", false, stdinReader2, &stdout2, &stderr2)
+	time.Sleep(200 * time.Millisecond)
+	cancel2()
+
+	var agyMsg Interaction
+	err = db.QueryRow("SELECT agent FROM interactions WHERE session_id = 'sess-456' AND title = 'session-register'").Scan(&agyMsg.Agent)
+	if err != nil {
+		t.Fatalf("Failed to find agy registration: %v", err)
+	}
+	if agyMsg.Agent != "antigravity" {
+		t.Errorf("Expected agent antigravity, got %s", agyMsg.Agent)
 	}
 
 	// Send a normal text message

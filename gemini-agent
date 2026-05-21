@@ -6,10 +6,12 @@ RESUME=false
 YOLO=false
 SESSION_NAME_OVERRIDE=""
 ADDITIONAL_ARGS=()
+AGENT_CMD="gemini"
 
 # Parse arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        --agent) AGENT_CMD="$2"; shift 2 ;;
         --resume) RESUME=true; shift ;;
         --yolo) YOLO=true; shift ;;
         *)
@@ -24,17 +26,21 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-# Prepare gemini args
-GEMINI_ARGS=("${ADDITIONAL_ARGS[@]}")
+# Prepare agent args
+AGENT_ARGS=("${ADDITIONAL_ARGS[@]}")
 if [ "$YOLO" = true ]; then
-    GEMINI_ARGS=("-y" "${GEMINI_ARGS[@]}")
+    if [ "$AGENT_CMD" = "agy" ]; then
+        AGENT_ARGS=("--dangerously-skip-permissions" "${AGENT_ARGS[@]}")
+    else
+        AGENT_ARGS=("-y" "${AGENT_ARGS[@]}")
+    fi
 fi
 
 # Get current tmux pane ID
 if [ -n "$TMUX" ]; then
     TMUX_TARGET=$(tmux display-message -p '#{pane_id}')
 else
-    echo "Error: gemini-agent must be run inside a tmux session."
+    echo "Error: agent-launcher must be run inside a tmux session."
     exit 1
 fi
 
@@ -52,8 +58,16 @@ rm -f "$RESTART_FILE"
 while true; do
     # Determine Session ID
     if [ "$RESUME" = true ]; then
-        # Get the latest session ID from the list
-        SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        if [ "$AGENT_CMD" = "agy" ]; then
+            # agy doesn't have a direct --list-sessions yet, but --continue handles it.
+            # We'll use a placeholder or try to find it in the logs if needed.
+            # For now, let's just use a fixed ID for resumed agy sessions to keep it simple,
+            # or try to extract it from state.json if possible.
+            SESSION_ID="latest"
+        else
+            SESSION_ID=$($AGENT_CMD --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        fi
+        
         if [ -z "$SESSION_ID" ]; then
             echo "Warning: No session found to resume. Initializing new session..."
             RESUME=false
@@ -64,25 +78,36 @@ while true; do
 
     if [ "$RESUME" = false ]; then
         echo "Initializing new session..."
-        # Start and exit immediately to create the session
-        # We use --skip-trust to avoid interactive prompts
-        echo "/quit" | gemini --skip-trust > /dev/null 2>&1
-        SESSION_ID=$(gemini --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        if [ "$AGENT_CMD" = "agy" ]; then
+            # Just use a random UUID for agy for now since we can't easily get it from the CLI
+            SESSION_ID=$(uuidgen)
+        else
+            # Start and exit immediately to create the session
+            echo "/quit" | $AGENT_CMD --skip-trust > /dev/null 2>&1
+            SESSION_ID=$($AGENT_CMD --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+        fi
         echo "Started session: $SESSION_ID"
     fi
 
     # Start push client in the background
-    # It runs in the same pane to correctly detect it and receive input
     $PUSH_CMD --cli-service tmux \
         --session-id "$SESSION_ID" \
         --session-name "$SESSION_NAME" \
         --session-path "$SESSION_PATH" \
-        --model gemini \
+        --model "$AGENT_CMD" \
         --tmux-target "$TMUX_TARGET" &
     PUSH_PID=$!
 
-    # Start gemini-cli by resuming the established session
-    gemini --resume latest "${GEMINI_ARGS[@]}"
+    # Start the agent
+    if [ "$AGENT_CMD" = "agy" ]; then
+        if [ "$RESUME" = true ]; then
+            $AGENT_CMD --continue "${AGENT_ARGS[@]}"
+        else
+            $AGENT_CMD "${AGENT_ARGS[@]}"
+        fi
+    else
+        gemini --resume latest "${AGENT_ARGS[@]}"
+    fi
     EXIT_CODE=$?
 
     # Cleanup push client
