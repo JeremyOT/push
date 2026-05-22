@@ -66,15 +66,15 @@ def main():
     current_log_file = None
     seen_messages = {} # Map id -> last hash of its data
     session_id = fallback_session_id
+    last_processed_msg_finalized = False # Track if the last msg had a full tokens object
 
     while True:
         latest = get_latest_log_file(log_dir)
         if latest and latest != current_log_file:
             sys.stderr.write(f"Found new log file: {latest}\n")
             current_log_file = latest
-            # Reset seen messages for new file? 
-            # Usually one file per session, so yes.
             seen_messages = {}
+            last_processed_msg_finalized = False
             
             for line in tail_file(current_log_file):
                 # If a newer log file appeared, switch to it
@@ -84,6 +84,7 @@ def main():
                         sys.stderr.write(f"Switching to newer log file: {new_latest}\n")
                         current_log_file = new_latest
                         seen_messages = {}
+                        last_processed_msg_finalized = False
                         break
 
                 line = line.strip()
@@ -94,14 +95,26 @@ def main():
                     data = json.loads(line)
                     
                     if "$set" in data:
+                        # Robust "Ready" Detection:
+                        # If the last message we saw was finalized (had tokens) 
+                        # and now we see a $set, the turn is truly over.
+                        if last_processed_msg_finalized:
+                            payload = {
+                                "session_id": session_id,
+                                "session_path": session_path,
+                                "status": "r", # Ready
+                                "kind": "status",
+                                "message": "Ready",
+                                "quiet": True
+                            }
+                            send_interaction(backend_url, payload)
+                            last_processed_msg_finalized = False
                         continue
 
                     msg_id = data.get("id")
                     if not msg_id:
                         continue
                     
-                    # Update session_id if we find one in the log
-                    # (In some formats it's top-level or in messages)
                     log_session_id = data.get("sessionId")
                     if log_session_id:
                         session_id = log_session_id
@@ -110,6 +123,11 @@ def main():
                     content = data.get("content", "")
                     thoughts = data.get("thoughts", [])
                     tool_calls = data.get("toolCalls", [])
+                    tokens = data.get("tokens", {})
+                    
+                    # A message is finalized if it has a non-empty tokens object
+                    # (LLM turn is complete)
+                    is_finalized = bool(tokens and tokens.get("total", 0) > 0)
                     
                     thought_text = ""
                     if thoughts:
@@ -118,6 +136,7 @@ def main():
                     status = "w"
                     if msg_type == "user":
                         status = "d"
+                        is_finalized = True # User messages are always "final"
                     
                     payload = {
                         "identifier": msg_id,
@@ -133,11 +152,11 @@ def main():
                     }
                     
                     msg_hash = hashlib.md5(line.encode()).hexdigest()
-                    if seen_messages.get(msg_id) == msg_hash:
-                        continue
+                    if seen_messages.get(msg_id) != msg_hash:
+                        seen_messages[msg_id] = msg_hash
+                        send_interaction(backend_url, payload)
                     
-                    seen_messages[msg_id] = msg_hash
-                    send_interaction(backend_url, payload)
+                    last_processed_msg_finalized = is_finalized
 
                 except Exception as e:
                     # sys.stderr.write(f"Error parsing log line: {e}\n")
