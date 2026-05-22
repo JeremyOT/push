@@ -1670,7 +1670,7 @@ func runGeminiAgent(args []string) {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe)
+	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe, "PUSH_ADDRESS="+*address)
 
 	// Handle signals to ensure we wait for the child process to exit and clean up
 	sigChan := make(chan os.Signal, 1)

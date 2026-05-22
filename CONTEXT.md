@@ -56,6 +56,9 @@ go build -ldflags="-w -s" -o push main.go
 ```
 
 ## Recent Changes
+- Implemented a real-time log scraper (`agy_scraper.py`) for the Antigravity CLI to provide incremental message updates in the Push UI, mimicking the hook-based flow of `gemini-cli`.
+- Integrated the scraper into the embedded agent launcher script, with automatic log directory discovery and process cleanup.
+- Refactored `main.go` and the launcher to pass and use the backend address (`PUSH_ADDRESS`) for robust communication.
 - Implemented `--antigravity` flag to support the Antigravity CLI (`agy`) as an alternative to `gemini-cli`.
 - Refactored the embedded agent script to be generic and support multiple agents (`gemini`, `agy`).
 - Added support for `--dangerously-skip-permissions` when using `agy` in YOLO mode.

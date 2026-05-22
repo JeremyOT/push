@@ -98,6 +98,29 @@ while true; do
         --tmux-target "$TMUX_TARGET" &
     PUSH_PID=$!
 
+    # Antigravity log scraper integration
+    SCRAPER_PID=""
+    if [ "$AGENT_CMD" = "agy" ]; then
+        PROJECTS_FILE="$HOME/.gemini/projects.json"
+        # Try to find current working directory in projects.json
+        PROJECT_NAME=$(python3 -c "import json, os; print(json.load(open(os.path.expanduser('$PROJECTS_FILE')))['projects'].get(os.getcwd(), ''))" 2>/dev/null)
+        if [ -z "$PROJECT_NAME" ]; then
+            # If not in projects.json, try to find a folder in ~/.gemini/tmp that is a hex hash or matches basename
+            PROJECT_NAME=$(basename "$PWD")
+        fi
+        LOG_DIR="$HOME/.gemini/tmp/$PROJECT_NAME/chats"
+        
+        # Start scraper in background
+        SCRAPER_CMD="$(dirname "$PUSH_CMD")/agy_scraper.py"
+        if [ ! -f "$SCRAPER_CMD" ]; then
+            # Fallback to current directory or PATH
+            SCRAPER_CMD="agy_scraper.py"
+        fi
+        $SCRAPER_CMD "$LOG_DIR" "http://${PUSH_ADDRESS:-127.0.0.1:8089}" "$SESSION_ID" "$SESSION_PATH" &
+        SCRAPER_PID=$!
+        echo "Started agy log scraper (PID $SCRAPER_PID) for $LOG_DIR"
+    fi
+
     # Start the agent
     if [ "$AGENT_CMD" = "agy" ]; then
         if [ "$RESUME" = true ]; then
@@ -110,8 +133,10 @@ while true; do
     fi
     EXIT_CODE=$?
 
-    # Cleanup push client
+    # Cleanup
+    kill $SCRAPER_PID 2>/dev/null
     kill $PUSH_PID 2>/dev/null
+    wait $SCRAPER_PID 2>/dev/null
     wait $PUSH_PID 2>/dev/null
     
     # Handle restart requests
