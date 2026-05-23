@@ -1881,6 +1881,19 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 				isUser = true
 				status = "d"
 				isFinalized = true
+				// Extract content between <USER_REQUEST> tags
+				startTag := "<USER_REQUEST>"
+				endTag := "</USER_REQUEST>"
+				startIdx := strings.Index(data.Content, startTag)
+				if startIdx != -1 {
+					startIdx += len(startTag)
+					endIdx := strings.Index(data.Content[startIdx:], endTag)
+					if endIdx != -1 {
+						data.Content = strings.TrimSpace(data.Content[startIdx : startIdx+endIdx])
+					} else {
+						data.Content = strings.TrimSpace(data.Content[startIdx:])
+					}
+				}
 			} else {
 				continue // Ignore System and others
 			}

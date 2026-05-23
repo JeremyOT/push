@@ -139,6 +139,7 @@ go build -ldflags="-w -s" -o push main.go
 ## Recent Changes
 - Refactored Antigravity (agy) integration to rely exclusively on parsing `transcript_full.jsonl`, eliminating the use of hooks.
 - Updated `runAgyScraper` to use the `source` field for message attribution: `MODEL` for agent messages and `USER_EXPLICIT` for user messages, while ignoring system messages.
+- Refined user message parsing for Antigravity to extract and display only the content within `<USER_REQUEST>` tags, ensuring a cleaner conversation feed.
 - Removed the `hooks/antigravity` directory as all messaging logic is now centralized in the internal Go scraper.
 - Enhanced Antigravity (agy) discovery logic: the `gemini-agent` script now launches `agy` with a unique `--log-file` in `/tmp/`, parses it to extract the conversation ID and `appDataDir`, and then starts the internal Go scraper on the specific `transcript_full.jsonl` file.
 - Removed tmux dependency for `--gemini-agent` mode. The internal CLI client now uses a new `pipe` mode that writes messages to `stdout` without requiring `tmux` or a target pane.
