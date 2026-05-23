@@ -37,6 +37,9 @@ var staticFS embed.FS
 //go:embed gemini-agent
 var geminiAgentScript string
 
+//go:embed agy_scraper.py
+var agyScraperScript string
+
 type Interaction struct {
 	ID              int64     `json:"id"`
 	Identifier      string    `json:"identifier,omitempty"`
@@ -136,7 +139,7 @@ func main() {
 			agentArgs = append(agentArgs, "--yolo")
 		}
 		agentArgs = append(agentArgs, flag.Args()...)
-		runGeminiAgent(agentArgs)
+		runGeminiAgent(agentArgs, *address)
 		return
 	}
 
@@ -1645,7 +1648,7 @@ func sendPushNotifications(db *sql.DB, title, message, link string) {
 	log.Printf("Processed %d subscriptions", count)
 }
 
-func runGeminiAgent(args []string) {
+func runGeminiAgent(args []string, address string) {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error getting executable path: %v\n", err)
@@ -1666,11 +1669,26 @@ func runGeminiAgent(args []string) {
 	}
 	tmpFile.Close()
 
+	// Create a temporary file for the scraper
+	tmpScraper, err := os.CreateTemp("", "agy_scraper-*.py")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temporary scraper file: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.Remove(tmpScraper.Name())
+
+	if _, err := tmpScraper.WriteString(agyScraperScript); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing temporary scraper file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpScraper.Close()
+	os.Chmod(tmpScraper.Name(), 0755)
+
 	cmd := exec.Command("bash", append([]string{tmpFile.Name()}, args...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe, "PUSH_ADDRESS="+*address)
+	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe, "PUSH_ADDRESS="+address, "AGY_SCRAPER="+tmpScraper.Name())
 
 	// Handle signals to ensure we wait for the child process to exit and clean up
 	sigChan := make(chan os.Signal, 1)

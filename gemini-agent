@@ -111,10 +111,13 @@ while true; do
         LOG_DIR="$HOME/.gemini/tmp/$PROJECT_NAME/chats"
         
         # Start scraper in background
-        SCRAPER_CMD="$(dirname "$PUSH_CMD")/agy_scraper.py"
-        if [ ! -f "$SCRAPER_CMD" ]; then
-            # Fallback to current directory or PATH
-            SCRAPER_CMD="agy_scraper.py"
+        SCRAPER_CMD="$AGY_SCRAPER"
+        if [ -z "$SCRAPER_CMD" ] || [ ! -x "$SCRAPER_CMD" ]; then
+            SCRAPER_CMD="$(dirname "$PUSH_CMD")/agy_scraper.py"
+            if [ ! -f "$SCRAPER_CMD" ]; then
+                # Fallback to current directory or PATH
+                SCRAPER_CMD="agy_scraper.py"
+            fi
         fi
         $SCRAPER_CMD "$LOG_DIR" "http://${PUSH_ADDRESS:-127.0.0.1:8089}" "$SESSION_ID" "$SESSION_PATH" &
         SCRAPER_PID=$!
