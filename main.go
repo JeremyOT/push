@@ -37,9 +37,6 @@ var staticFS embed.FS
 //go:embed gemini-agent
 var geminiAgentScript string
 
-//go:embed agy_scraper.py
-var agyScraperScript string
-
 type Interaction struct {
 	ID              int64     `json:"id"`
 	Identifier      string    `json:"identifier,omitempty"`
@@ -57,6 +54,19 @@ type Interaction struct {
 	Agent           string    `json:"agent,omitempty"`
 	SessionID       string    `json:"session_id,omitempty"`
 	SessionPath     string    `json:"session_path,omitempty"`
+}
+
+type AgyLogLine struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	SessionID string `json:"sessionId"`
+	Content   string `json:"content"`
+	Thoughts  []struct {
+		Subject     string `json:"subject"`
+		Description string `json:"description"`
+	} `json:"thoughts"`
+	Tokens map[string]int `json:"tokens"`
+	Set    interface{}    `json:"$set"`
 }
 
 var vapidPrivateKey string
@@ -125,7 +135,20 @@ func main() {
 	resumeAgent := flag.Bool("resume", false, "Resume the last agent session")
 	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass -y to agent)")
 	hermesAgent := flag.String("hermes-agent", "", "URL of the Hermes Agent API for SSE proxy")
+
+	// Internal agy scraper flags
+	internalAgyScraper := flag.Bool("internal-agy-scraper", false, "Internal use only: run the agy log scraper")
+	agyLogDir := flag.String("agy-log-dir", "", "Internal use only: log directory for agy scraper")
+	agyBackendURL := flag.String("agy-backend-url", "", "Internal use only: backend URL for agy scraper")
+	agyFallbackSessionID := flag.String("agy-fallback-session-id", "", "Internal use only: fallback session ID for agy scraper")
+	agySessionPath := flag.String("agy-session-path", "", "Internal use only: session path for agy scraper")
+
 	flag.Parse()
+
+	if *internalAgyScraper {
+		runAgyScraper(*agyLogDir, *agyBackendURL, *agyFallbackSessionID, *agySessionPath)
+		return
+	}
 
 	if *geminiAgent || *antigravityAgent {
 		var agentArgs []string
@@ -1669,26 +1692,11 @@ func runGeminiAgent(args []string, address string) {
 	}
 	tmpFile.Close()
 
-	// Create a temporary file for the scraper
-	tmpScraper, err := os.CreateTemp("", "agy_scraper-*.py")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating temporary scraper file: %v\n", err)
-		os.Exit(1)
-	}
-	defer os.Remove(tmpScraper.Name())
-
-	if _, err := tmpScraper.WriteString(agyScraperScript); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing temporary scraper file: %v\n", err)
-		os.Exit(1)
-	}
-	tmpScraper.Close()
-	os.Chmod(tmpScraper.Name(), 0755)
-
 	cmd := exec.Command("bash", append([]string{tmpFile.Name()}, args...)...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe, "PUSH_ADDRESS="+address, "AGY_SCRAPER="+tmpScraper.Name())
+	cmd.Env = append(os.Environ(), "PUSH_BINARY="+exe, "PUSH_ADDRESS="+address)
 
 	// Handle signals to ensure we wait for the child process to exit and clean up
 	sigChan := make(chan os.Signal, 1)
@@ -1721,6 +1729,185 @@ func runGeminiAgent(args []string, address string) {
 		}
 		fmt.Fprintf(os.Stderr, "Error running gemini-agent: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+func runAgyScraper(logDir, backendURL, fallbackSessionID, sessionPath string) {
+	fmt.Fprintf(os.Stderr, "Watching log directory: %s\n", logDir)
+
+	var currentLogFile string
+	var fileHandle *os.File
+	seenMessages := make(map[string]string) // Map id -> last content
+	sessionID := fallbackSessionID
+	lastProcessedMsgFinalized := false
+
+	getLatestLogFile := func(dir string) string {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return ""
+		}
+		var latest string
+		var latestTime time.Time
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasPrefix(entry.Name(), "session-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				if info.ModTime().After(latestTime) {
+					latestTime = info.ModTime()
+					latest = filepath.Join(dir, entry.Name())
+				}
+			}
+		}
+		return latest
+	}
+
+	send := func(payload Interaction) {
+		data, _ := json.Marshal(payload)
+		resp, err := http.Post(backendURL+"/interactions", "application/json", bytes.NewReader(data))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}
+
+	for {
+		latest := getLatestLogFile(logDir)
+		if latest != "" && latest != currentLogFile {
+			if fileHandle != nil {
+				fileHandle.Close()
+			}
+
+			info, _ := os.Stat(latest)
+			startAtEnd := currentLogFile == "" && time.Since(info.ModTime()) > 2*time.Minute
+
+			fmt.Fprintf(os.Stderr, "Found log file: %s (startAtEnd=%v)\n", latest, startAtEnd)
+			currentLogFile = latest
+			h, err := os.Open(currentLogFile)
+			if err != nil {
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			fileHandle = h
+
+			if startAtEnd {
+				fileHandle.Seek(0, io.SeekEnd)
+			}
+
+			seenMessages = make(map[string]string)
+			lastProcessedMsgFinalized = false
+		}
+
+		if fileHandle == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		scanner := bufio.NewScanner(fileHandle)
+		for scanner.Scan() {
+			line := scanner.Text()
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+
+			var data AgyLogLine
+			if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
+				continue
+			}
+
+			if data.Set != nil {
+				if lastProcessedMsgFinalized {
+					payload := Interaction{
+						SessionID:   sessionID,
+						SessionPath: sessionPath,
+						Status:      "r",
+						Kind:        "status",
+						Message:     "Ready",
+						Quiet:       true,
+					}
+					send(payload)
+					lastProcessedMsgFinalized = false
+				}
+				continue
+			}
+
+			if data.ID == "" {
+				continue
+			}
+
+			if data.SessionID != "" {
+				sessionID = data.SessionID
+			}
+
+			isFinalized := data.Tokens != nil && data.Tokens["total"] > 0
+			thoughtText := ""
+			if len(data.Thoughts) > 0 {
+				var thoughts []string
+				for _, t := range data.Thoughts {
+					thoughts = append(thoughts, fmt.Sprintf("**%s**: %s", t.Subject, t.Description))
+				}
+				thoughtText = strings.Join(thoughts, "\n\n")
+			}
+
+			status := "w"
+			isUser := false
+			if data.Type == "user" {
+				status = "d"
+				isFinalized = true
+				isUser = true
+			}
+
+			kind := "status"
+			if data.Type == "gemini" {
+				kind = "agent"
+			}
+
+			content := data.Content
+			if content == "" {
+				content = "Working..."
+			}
+			shortMsg := content
+			if len(shortMsg) > 100 {
+				shortMsg = shortMsg[:100]
+			}
+
+			detailed := content
+			if thoughtText != "" {
+				detailed += "\n\n### Thoughts\n" + thoughtText
+			}
+
+			payload := Interaction{
+				Identifier:      data.ID,
+				Message:         shortMsg,
+				DetailedMessage: detailed,
+				Title:           filepath.Base(sessionPath),
+				Agent:           "antigravity",
+				Kind:            kind,
+				Status:          status,
+				SessionID:       sessionID,
+				SessionPath:     sessionPath,
+				IsUser:          isUser,
+				Quiet:           true,
+			}
+
+			if seenMessages[data.ID] != trimmed {
+				seenMessages[data.ID] = trimmed
+				send(payload)
+			}
+			lastProcessedMsgFinalized = isFinalized
+		}
+
+		if err := scanner.Err(); err != nil {
+			// Probably EOF or truncated
+			info, _ := os.Stat(currentLogFile)
+			pos, _ := fileHandle.Seek(0, io.SeekCurrent)
+			if info.Size() < pos {
+				fmt.Fprintf(os.Stderr, "File truncated, resetting: %s\n", currentLogFile)
+				fileHandle.Seek(0, io.SeekStart)
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
 

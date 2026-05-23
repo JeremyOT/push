@@ -137,7 +137,9 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
-- Embedded `agy_scraper.py` into the `push` binary using `go:embed` and updated `runGeminiAgent` to execute it from a temporary file, ensuring `--antigravity` mode is fully portable and doesn't depend on external script files.
+- Rewrote `agy_scraper.py` logic in native Go and integrated it directly into the `push` binary.
+- Added internal flags (`--internal-agy-scraper`, `--agy-log-dir`, etc.) to trigger the Go-native Antigravity log scraper, eliminating the Python runtime dependency.
+- Updated `gemini-agent` launcher to invoke the internal Go scraper, ensuring `--antigravity` mode is fully self-contained within the `push` binary.
 - Removed tmux dependency for `--gemini-agent` mode. The internal CLI client now uses a new `pipe` mode that writes messages to `stdout` without requiring `tmux` or a target pane.
 - Improved `runGeminiAgent` to correctly forward `os.Stdin` to the agent script, ensuring interactive use is possible without `tmux`.
 - Refactored `runGeminiAgent` output handling to avoid data loss when extracting the session ID from the script's `stdout`.
