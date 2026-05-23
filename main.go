@@ -139,6 +139,7 @@ func main() {
 	// Internal agy scraper flags
 	internalAgyScraper := flag.Bool("internal-agy-scraper", false, "Internal use only: run the agy log scraper")
 	agyLogDir := flag.String("agy-log-dir", "", "Internal use only: log directory for agy scraper")
+	agyLogFile := flag.String("agy-log-file", "", "Internal use only: specific log file for agy scraper")
 	agyBackendURL := flag.String("agy-backend-url", "", "Internal use only: backend URL for agy scraper")
 	agyFallbackSessionID := flag.String("agy-fallback-session-id", "", "Internal use only: fallback session ID for agy scraper")
 	agySessionPath := flag.String("agy-session-path", "", "Internal use only: session path for agy scraper")
@@ -146,7 +147,7 @@ func main() {
 	flag.Parse()
 
 	if *internalAgyScraper {
-		runAgyScraper(*agyLogDir, *agyBackendURL, *agyFallbackSessionID, *agySessionPath)
+		runAgyScraper(*agyLogDir, *agyLogFile, *agyBackendURL, *agyFallbackSessionID, *agySessionPath)
 		return
 	}
 
@@ -1732,8 +1733,12 @@ func runGeminiAgent(args []string, address string) {
 	}
 }
 
-func runAgyScraper(logDir, backendURL, fallbackSessionID, sessionPath string) {
-	fmt.Fprintf(os.Stderr, "Watching log directory: %s\n", logDir)
+func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath string) {
+	if logFile != "" {
+		fmt.Fprintf(os.Stderr, "Watching log file: %s\n", logFile)
+	} else {
+		fmt.Fprintf(os.Stderr, "Watching log directory: %s\n", logDir)
+	}
 
 	var currentLogFile string
 	var fileHandle *os.File
@@ -1742,6 +1747,12 @@ func runAgyScraper(logDir, backendURL, fallbackSessionID, sessionPath string) {
 	lastProcessedMsgFinalized := false
 
 	getLatestLogFile := func(dir string) string {
+		if logFile != "" {
+			if _, err := os.Stat(logFile); err == nil {
+				return logFile
+			}
+			return ""
+		}
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return ""
@@ -1779,9 +1790,13 @@ func runAgyScraper(logDir, backendURL, fallbackSessionID, sessionPath string) {
 			}
 
 			info, _ := os.Stat(latest)
-			startAtEnd := currentLogFile == "" && time.Since(info.ModTime()) > 2*time.Minute
+			startAtEnd := currentLogFile == "" && time.Since(info.ModTime()) > 2*time.Minute && logFile == ""
 
-			fmt.Fprintf(os.Stderr, "Found log file: %s (startAtEnd=%v)\n", latest, startAtEnd)
+			if currentLogFile == "" {
+				fmt.Fprintf(os.Stderr, "Found log file: %s (startAtEnd=%v)\n", latest, startAtEnd)
+			} else {
+				fmt.Fprintf(os.Stderr, "Switching to log file: %s\n", latest)
+			}
 			currentLogFile = latest
 			h, err := os.Open(currentLogFile)
 			if err != nil {
@@ -1910,4 +1925,5 @@ func runAgyScraper(logDir, backendURL, fallbackSessionID, sessionPath string) {
 		time.Sleep(500 * time.Millisecond)
 	}
 }
+
 

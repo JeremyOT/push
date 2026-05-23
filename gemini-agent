@@ -100,43 +100,60 @@ while true; do
 
     # Antigravity log scraper integration
     SCRAPER_PID=""
+    CURRENT_AGENT_ARGS=("${AGENT_ARGS[@]}")
     if [ "$AGENT_CMD" = "agy" ]; then
-        PROJECTS_FILE="$HOME/.gemini/projects.json"
-        # Try to find current working directory in projects.json
-        PROJECT_NAME=$(python3 -c "import json, os; print(json.load(open(os.path.expanduser('$PROJECTS_FILE')))['projects'].get(os.getcwd(), ''))" 2>/dev/null)
-        if [ -z "$PROJECT_NAME" ]; then
-            # If not in projects.json, try to find a folder in ~/.gemini/tmp that is a hex hash or matches basename
-            PROJECT_NAME=$(basename "$PWD")
+        UUID=$(uuidgen 2>/dev/null)
+        if [ -z "$UUID" ]; then
+            UUID=$(python3 -c "import uuid; print(uuid.uuid4())")
         fi
-        LOG_DIR="$HOME/.gemini/tmp/$PROJECT_NAME/chats"
-        
-        # Start internal scraper
-        $PUSH_CMD --internal-agy-scraper \
-            --agy-log-dir "$LOG_DIR" \
-            --agy-backend-url "http://${PUSH_ADDRESS:-127.0.0.1:8089}" \
-            --agy-fallback-session-id "$SESSION_ID" \
-            --agy-session-path "$SESSION_PATH" &
+        AGY_LOG="/tmp/agy-$UUID.log"
+        touch "$AGY_LOG"
+
+        # Start a discovery background process
+        (
+            CONV_ID=""
+            APP_DATA_DIR=""
+            while [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; do
+                if [ -f "$AGY_LOG" ]; then
+                    CONV_ID=$(grep -m 1 "Streaming conversation" "$AGY_LOG" | awk '{print $NF}')
+                    APP_DATA_DIR=$(grep -m 1 "Creating CLI server backend:" "$AGY_LOG" | sed -n 's/.*appDataDir=\([^ ]*\).*/\1/p')
+                fi
+                if [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; then
+                    sleep 0.5
+                fi
+            done
+
+            LOG_FILE="$APP_DATA_DIR/brain/$CONV_ID/.system_generated/logs/transcript_full.jsonl"
+            echo "Started internal agy log scraper for $LOG_FILE"
+
+            # Now start the real scraper
+            exec $PUSH_CMD --internal-agy-scraper \
+                --agy-log-file "$LOG_FILE" \
+                --agy-backend-url "http://${PUSH_ADDRESS:-127.0.0.1:8089}" \
+                --agy-fallback-session-id "$SESSION_ID" \
+                --agy-session-path "$SESSION_PATH"
+        ) &
         SCRAPER_PID=$!
-        echo "Started internal agy log scraper (PID $SCRAPER_PID) for $LOG_DIR"
+
+        CURRENT_AGENT_ARGS=("--log-file" "$AGY_LOG" "${CURRENT_AGENT_ARGS[@]}")
     fi
 
     # Start the agent
     if [ "$AGENT_CMD" = "agy" ]; then
         if [ "$RESUME" = true ]; then
-            $AGENT_CMD --continue "${AGENT_ARGS[@]}"
+            $AGENT_CMD --continue "${CURRENT_AGENT_ARGS[@]}"
         else
-            $AGENT_CMD "${AGENT_ARGS[@]}"
+            $AGENT_CMD "${CURRENT_AGENT_ARGS[@]}"
         fi
     else
-        gemini --resume latest "${AGENT_ARGS[@]}"
+        gemini --resume latest "${CURRENT_AGENT_ARGS[@]}"
     fi
     EXIT_CODE=$?
 
     # Cleanup
     kill $SCRAPER_PID 2>/dev/null
-    kill $PUSH_PID 2>/dev/null
     wait $SCRAPER_PID 2>/dev/null
-    wait $PUSH_PID 2>/dev/null
+    rm -f "$AGY_LOG"
     
     # Handle restart requests
     if [ -f "$RESTART_FILE" ]; then
