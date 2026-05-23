@@ -59,6 +59,7 @@ type Interaction struct {
 type AgyLogLine struct {
 	ID        string `json:"id"`
 	Type      string `json:"type"`
+	Source    string `json:"source"`
 	SessionID string `json:"sessionId"`
 	Content   string `json:"content"`
 	Thoughts  []struct {
@@ -1867,15 +1868,21 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 
 			status := "w"
 			isUser := false
-			if data.Type == "user" {
+			kind := "status"
+
+			if data.Source == "MODEL" {
+				kind = "agent"
+				isUser = false
+				if isFinalized {
+					status = "d"
+				}
+			} else if data.Source == "USER_EXPLICIT" {
+				kind = "status"
+				isUser = true
 				status = "d"
 				isFinalized = true
-				isUser = true
-			}
-
-			kind := "status"
-			if data.Type == "gemini" {
-				kind = "agent"
+			} else {
+				continue // Ignore System and others
 			}
 
 			content := data.Content

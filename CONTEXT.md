@@ -137,11 +137,10 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Refactored Antigravity (agy) integration to rely exclusively on parsing `transcript_full.jsonl`, eliminating the use of hooks.
+- Updated `runAgyScraper` to use the `source` field for message attribution: `MODEL` for agent messages and `USER_EXPLICIT` for user messages, while ignoring system messages.
+- Removed the `hooks/antigravity` directory as all messaging logic is now centralized in the internal Go scraper.
 - Enhanced Antigravity (agy) discovery logic: the `gemini-agent` script now launches `agy` with a unique `--log-file` in `/tmp/`, parses it to extract the conversation ID and `appDataDir`, and then starts the internal Go scraper on the specific `transcript_full.jsonl` file.
-- Updated the `--yolo` flag to correctly translate to `--dangerously-skip-permissions` when running the Antigravity (`agy`) agent.
-- Rewrote `agy_scraper.py` logic in native Go and integrated it directly into the `push` binary, with support for both directory-based and specific-file-based monitoring via `--agy-log-dir` and `--agy-log-file`.
-- Added internal flags (`--internal-agy-scraper`, `--agy-log-dir`, etc.) to trigger the Go-native Antigravity log scraper, eliminating the Python runtime dependency.
-- Updated `gemini-agent` launcher to invoke the internal Go scraper, ensuring `--antigravity` mode is fully self-contained within the `push` binary.
 - Removed tmux dependency for `--gemini-agent` mode. The internal CLI client now uses a new `pipe` mode that writes messages to `stdout` without requiring `tmux` or a target pane.
 - Improved `runGeminiAgent` to correctly forward `os.Stdin` to the agent script, ensuring interactive use is possible without `tmux`.
 - Refactored `runGeminiAgent` output handling to avoid data loss when extracting the session ID from the script's `stdout`.
