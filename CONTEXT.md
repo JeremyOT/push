@@ -137,6 +137,7 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Refactored `runAgyScraper` in `main.go` to use a robust, real-time streaming approach with `bufio.Reader` and a line accumulator, ensuring no data loss during log tailing and improving responsiveness (100ms polling).
 - Refactored Antigravity (agy) integration to rely exclusively on parsing `transcript_full.jsonl`, eliminating the use of hooks.
 - Updated `runAgyScraper` to use the `source` field for message attribution: `MODEL` for agent messages and `USER_EXPLICIT` for user messages, while ignoring system messages.
 - Refined user message parsing for Antigravity to extract and display only the content within `<USER_REQUEST>` tags, ensuring a cleaner conversation feed.

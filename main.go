@@ -1743,6 +1743,9 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 
 	var currentLogFile string
 	var fileHandle *os.File
+	var reader *bufio.Reader
+	var lineAccumulator strings.Builder
+
 	seenMessages := make(map[string]string) // Map id -> last content
 	sessionID := fallbackSessionID
 	lastProcessedMsgFinalized := false
@@ -1805,6 +1808,8 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 				continue
 			}
 			fileHandle = h
+			reader = bufio.NewReader(fileHandle)
+			lineAccumulator.Reset()
 
 			if startAtEnd {
 				fileHandle.Seek(0, io.SeekEnd)
@@ -1814,136 +1819,148 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 			lastProcessedMsgFinalized = false
 		}
 
-		if fileHandle == nil {
+		if reader == nil {
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
-		scanner := bufio.NewScanner(fileHandle)
-		for scanner.Scan() {
-			line := scanner.Text()
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
-			}
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			lineAccumulator.WriteString(line)
+			if strings.HasSuffix(line, "\n") {
+				fullLine := strings.TrimSpace(lineAccumulator.String())
+				lineAccumulator.Reset()
+				if fullLine == "" {
+					continue
+				}
 
-			var data AgyLogLine
-			if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
-				continue
-			}
+				var data AgyLogLine
+				if err := json.Unmarshal([]byte(fullLine), &data); err != nil {
+					continue
+				}
 
-			if data.Set != nil {
-				if lastProcessedMsgFinalized {
-					payload := Interaction{
-						SessionID:   sessionID,
-						SessionPath: sessionPath,
-						Status:      "r",
-						Kind:        "status",
-						Message:     "Ready",
-						Quiet:       true,
+				if data.Set != nil {
+					if lastProcessedMsgFinalized {
+						payload := Interaction{
+							SessionID:   sessionID,
+							SessionPath: sessionPath,
+							Status:      "r",
+							Kind:        "status",
+							Message:     "Ready",
+							Quiet:       true,
+						}
+						send(payload)
+						lastProcessedMsgFinalized = false
 					}
-					send(payload)
-					lastProcessedMsgFinalized = false
+					continue
 				}
-				continue
-			}
 
-			if data.ID == "" {
-				continue
-			}
-
-			if data.SessionID != "" {
-				sessionID = data.SessionID
-			}
-
-			isFinalized := data.Tokens != nil && data.Tokens["total"] > 0
-			thoughtText := ""
-			if len(data.Thoughts) > 0 {
-				var thoughts []string
-				for _, t := range data.Thoughts {
-					thoughts = append(thoughts, fmt.Sprintf("**%s**: %s", t.Subject, t.Description))
+				if data.ID == "" {
+					continue
 				}
-				thoughtText = strings.Join(thoughts, "\n\n")
-			}
 
-			status := "w"
-			isUser := false
-			kind := "status"
+				if data.SessionID != "" {
+					sessionID = data.SessionID
+				}
 
-			if data.Source == "MODEL" {
-				kind = "agent"
-				isUser = false
-				if isFinalized {
+				isFinalized := data.Tokens != nil && data.Tokens["total"] > 0
+				thoughtText := ""
+				if len(data.Thoughts) > 0 {
+					var thoughts []string
+					for _, t := range data.Thoughts {
+						thoughts = append(thoughts, fmt.Sprintf("**%s**: %s", t.Subject, t.Description))
+					}
+					thoughtText = strings.Join(thoughts, "\n\n")
+				}
+
+				status := "w"
+				isUser := false
+				kind := "status"
+
+				if data.Source == "MODEL" {
+					kind = "agent"
+					isUser = false
+					if isFinalized {
+						status = "d"
+					}
+				} else if data.Source == "USER_EXPLICIT" {
+					kind = "status"
+					isUser = true
 					status = "d"
-				}
-			} else if data.Source == "USER_EXPLICIT" {
-				kind = "status"
-				isUser = true
-				status = "d"
-				isFinalized = true
-				// Extract content between <USER_REQUEST> tags
-				startTag := "<USER_REQUEST>"
-				endTag := "</USER_REQUEST>"
-				startIdx := strings.Index(data.Content, startTag)
-				if startIdx != -1 {
-					startIdx += len(startTag)
-					endIdx := strings.Index(data.Content[startIdx:], endTag)
-					if endIdx != -1 {
-						data.Content = strings.TrimSpace(data.Content[startIdx : startIdx+endIdx])
-					} else {
-						data.Content = strings.TrimSpace(data.Content[startIdx:])
+					isFinalized = true
+					// Extract content between <USER_REQUEST> tags
+					startTag := "<USER_REQUEST>"
+					endTag := "</USER_REQUEST>"
+					startIdx := strings.Index(data.Content, startTag)
+					if startIdx != -1 {
+						startIdx += len(startTag)
+						endIdx := strings.Index(data.Content[startIdx:], endTag)
+						if endIdx != -1 {
+							data.Content = strings.TrimSpace(data.Content[startIdx : startIdx+endIdx])
+						} else {
+							data.Content = strings.TrimSpace(data.Content[startIdx:])
+						}
 					}
+				} else {
+					continue // Ignore System and others
 				}
-			} else {
-				continue // Ignore System and others
-			}
 
-			content := data.Content
-			if content == "" {
-				content = "Working..."
-			}
-			shortMsg := content
-			if len(shortMsg) > 100 {
-				shortMsg = shortMsg[:100]
-			}
+				content := data.Content
+				if content == "" {
+					content = "Working..."
+				}
+				shortMsg := content
+				if len(shortMsg) > 100 {
+					shortMsg = shortMsg[:100]
+				}
 
-			detailed := content
-			if thoughtText != "" {
-				detailed += "\n\n### Thoughts\n" + thoughtText
-			}
+				detailed := content
+				if thoughtText != "" {
+					detailed += "\n\n### Thoughts\n" + thoughtText
+				}
 
-			payload := Interaction{
-				Identifier:      data.ID,
-				Message:         shortMsg,
-				DetailedMessage: detailed,
-				Title:           filepath.Base(sessionPath),
-				Agent:           "antigravity",
-				Kind:            kind,
-				Status:          status,
-				SessionID:       sessionID,
-				SessionPath:     sessionPath,
-				IsUser:          isUser,
-				Quiet:           true,
-			}
+				payload := Interaction{
+					Identifier:      data.ID,
+					Message:         shortMsg,
+					DetailedMessage: detailed,
+					Title:           filepath.Base(sessionPath),
+					Agent:           "antigravity",
+					Kind:            kind,
+					Status:          status,
+					SessionID:       sessionID,
+					SessionPath:     sessionPath,
+					IsUser:          isUser,
+					Quiet:           true,
+				}
 
-			if seenMessages[data.ID] != trimmed {
-				seenMessages[data.ID] = trimmed
-				send(payload)
+				if seenMessages[data.ID] != fullLine {
+					seenMessages[data.ID] = fullLine
+					send(payload)
+				}
+				lastProcessedMsgFinalized = isFinalized
 			}
-			lastProcessedMsgFinalized = isFinalized
 		}
 
-		if err := scanner.Err(); err != nil {
-			// Probably EOF or truncated
-			info, _ := os.Stat(currentLogFile)
-			pos, _ := fileHandle.Seek(0, io.SeekCurrent)
-			if info.Size() < pos {
-				fmt.Fprintf(os.Stderr, "File truncated, resetting: %s\n", currentLogFile)
-				fileHandle.Seek(0, io.SeekStart)
+		if err != nil {
+			if err == io.EOF {
+				// Check for truncation
+				info, _ := os.Stat(currentLogFile)
+				pos, _ := fileHandle.Seek(0, io.SeekCurrent)
+				if info.Size() < pos {
+					fmt.Fprintf(os.Stderr, "File truncated, resetting: %s\n", currentLogFile)
+					fileHandle.Seek(0, io.SeekStart)
+					reader = bufio.NewReader(fileHandle)
+					lineAccumulator.Reset()
+				}
+				time.Sleep(100 * time.Millisecond)
+				continue
 			}
+			// Other error, log and wait
+			fmt.Fprintf(os.Stderr, "Read error: %v\n", err)
+			time.Sleep(1 * time.Second)
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
 }
+
 
 
