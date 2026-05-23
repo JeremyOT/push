@@ -133,7 +133,7 @@ func main() {
 	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded agent script with gemini")
 	antigravityAgent := flag.Bool("antigravity", false, "Run the embedded agent script with agy")
 	resumeAgent := flag.Bool("resume", false, "Resume the last agent session")
-	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass -y to agent)")
+	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass appropriate flags to the agent, e.g. -y for gemini, --dangerously-skip-permissions for agy)")
 	hermesAgent := flag.String("hermes-agent", "", "URL of the Hermes Agent API for SSE proxy")
 
 	// Internal agy scraper flags

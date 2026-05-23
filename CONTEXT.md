@@ -138,6 +138,7 @@ go build -ldflags="-w -s" -o push main.go
 
 ## Recent Changes
 - Enhanced Antigravity (agy) discovery logic: the `gemini-agent` script now launches `agy` with a unique `--log-file` in `/tmp/`, parses it to extract the conversation ID and `appDataDir`, and then starts the internal Go scraper on the specific `transcript_full.jsonl` file.
+- Updated the `--yolo` flag to correctly translate to `--dangerously-skip-permissions` when running the Antigravity (`agy`) agent.
 - Rewrote `agy_scraper.py` logic in native Go and integrated it directly into the `push` binary, with support for both directory-based and specific-file-based monitoring via `--agy-log-dir` and `--agy-log-file`.
 - Added internal flags (`--internal-agy-scraper`, `--agy-log-dir`, etc.) to trigger the Go-native Antigravity log scraper, eliminating the Python runtime dependency.
 - Updated `gemini-agent` launcher to invoke the internal Go scraper, ensuring `--antigravity` mode is fully self-contained within the `push` binary.
