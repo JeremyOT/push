@@ -1560,5 +1560,77 @@ func TestAgySessionIsolation(t *testing.T) {
 	}
 }
 
+func TestTranslateAgentArgs(t *testing.T) {
+	tests := []struct {
+		name          string
+		isAntigravity bool
+		resume        bool
+		yolo          bool
+		extraArgs     []string
+		expected      []string
+	}{
+		{
+			name:          "gemini resume",
+			isAntigravity: false,
+			resume:        true,
+			yolo:          false,
+			extraArgs:     []string{"my-session"},
+			expected:      []string{"--resume", "my-session"},
+		},
+		{
+			name:          "antigravity resume (via resume bool)",
+			isAntigravity: true,
+			resume:        true,
+			yolo:          false,
+			extraArgs:     []string{"my-session"},
+			expected:      []string{"--agent", "agy", "--continue", "my-session"},
+		},
+		{
+			name:          "antigravity resume via extraArgs",
+			isAntigravity: true,
+			resume:        false,
+			yolo:          false,
+			extraArgs:     []string{"my-session", "--resume"},
+			expected:      []string{"--agent", "agy", "my-session", "--continue"},
+		},
+		{
+			name:          "antigravity resume via em-dash",
+			isAntigravity: true,
+			resume:        false,
+			yolo:          false,
+			extraArgs:     []string{"my-session", "—resume"},
+			expected:      []string{"--agent", "agy", "my-session", "--continue"},
+		},
+		{
+			name:          "gemini continue via extraArgs",
+			isAntigravity: false,
+			resume:        false,
+			yolo:          false,
+			extraArgs:     []string{"my-session", "--continue"},
+			expected:      []string{"my-session", "--resume"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := translateAgentArgs(tt.isAntigravity, tt.resume, tt.yolo, tt.extraArgs)
+			if len(actual) != len(tt.expected) {
+				t.Fatalf("expected %v, got %v", tt.expected, actual)
+			}
+			for i, v := range actual {
+				if v != tt.expected[i] {
+					t.Errorf("at index %d: expected %s, got %s", i, tt.expected[i], v)
+				}
+			}
+		})
+	}
+}
+
+func TestGeminiAgentScriptContinueAlias(t *testing.T) {
+	if !strings.Contains(geminiAgentScript, "--resume|--continue)") {
+		t.Error("gemini-agent script does not contain --resume|--continue) alias parsing")
+	}
+}
+
 
 

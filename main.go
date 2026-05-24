@@ -143,6 +143,7 @@ func main() {
 	geminiAgent := flag.Bool("gemini-agent", false, "Run the embedded agent script with gemini")
 	antigravityAgent := flag.Bool("antigravity", false, "Run the embedded agent script with agy")
 	resumeAgent := flag.Bool("resume", false, "Resume the last agent session")
+	continueAgent := flag.Bool("continue", false, "Resume the last agent session (alias for -resume when used with -antigravity)")
 	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass appropriate flags to the agent, e.g. -y for gemini, --dangerously-skip-permissions for agy)")
 	hermesAgent := flag.String("hermes-agent", "", "URL of the Hermes Agent API for SSE proxy")
 
@@ -162,17 +163,7 @@ func main() {
 	}
 
 	if *geminiAgent || *antigravityAgent {
-		var agentArgs []string
-		if *antigravityAgent {
-			agentArgs = append(agentArgs, "--agent", "agy")
-		}
-		if *resumeAgent {
-			agentArgs = append(agentArgs, "--resume")
-		}
-		if *yoloAgent {
-			agentArgs = append(agentArgs, "--yolo")
-		}
-		agentArgs = append(agentArgs, flag.Args()...)
+		agentArgs := translateAgentArgs(*antigravityAgent, *resumeAgent || *continueAgent, *yoloAgent, flag.Args())
 		runGeminiAgent(agentArgs, *address)
 		return
 	}
@@ -2065,6 +2056,33 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 			time.Sleep(1 * time.Second)
 		}
 	}
+}
+
+func translateAgentArgs(isAntigravity, resume, yolo bool, extraArgs []string) []string {
+	var agentArgs []string
+	if isAntigravity {
+		agentArgs = append(agentArgs, "--agent", "agy")
+	}
+	if resume {
+		if isAntigravity {
+			agentArgs = append(agentArgs, "--continue")
+		} else {
+			agentArgs = append(agentArgs, "--resume")
+		}
+	}
+	if yolo {
+		agentArgs = append(agentArgs, "--yolo")
+	}
+	for _, arg := range extraArgs {
+		if isAntigravity && (arg == "--resume" || arg == "-resume" || arg == "—resume") {
+			agentArgs = append(agentArgs, "--continue")
+		} else if !isAntigravity && (arg == "--continue" || arg == "-continue" || arg == "—continue") {
+			agentArgs = append(agentArgs, "--resume")
+		} else {
+			agentArgs = append(agentArgs, arg)
+		}
+	}
+	return agentArgs
 }
 
 
