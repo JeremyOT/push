@@ -1989,8 +1989,8 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 					seenMessages[data.ID] = fullLine
 					send(payload)
 
-					// If this is a PLANNER_RESPONSE with tool calls, generate an approval card
-					if data.Source == "MODEL" && data.Type == "PLANNER_RESPONSE" && len(data.ToolCalls) > 0 {
+					// If this is a PLANNER_RESPONSE with tool calls, generate an approval card (skip in YOLO mode)
+					if !yolo && data.Source == "MODEL" && data.Type == "PLANNER_RESPONSE" && len(data.ToolCalls) > 0 {
 						// Create approval details JSON
 						firstTool := data.ToolCalls[0]
 						details := map[string]interface{}{
@@ -2040,13 +2040,14 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 		if err != nil {
 			if err == io.EOF {
 				// Check for truncation
-				info, _ := os.Stat(currentLogFile)
-				pos, _ := fileHandle.Seek(0, io.SeekCurrent)
-				if info.Size() < pos {
-					fmt.Fprintf(os.Stderr, "File truncated, resetting: %s\n", currentLogFile)
-					fileHandle.Seek(0, io.SeekStart)
-					reader = bufio.NewReader(fileHandle)
-					lineAccumulator.Reset()
+				if info, err := os.Stat(currentLogFile); err == nil {
+					pos, _ := fileHandle.Seek(0, io.SeekCurrent)
+					if info.Size() < pos {
+						fmt.Fprintf(os.Stderr, "File truncated, resetting: %s\n", currentLogFile)
+						fileHandle.Seek(0, io.SeekStart)
+						reader = bufio.NewReader(fileHandle)
+						lineAccumulator.Reset()
+					}
 				}
 				time.Sleep(100 * time.Millisecond)
 				continue

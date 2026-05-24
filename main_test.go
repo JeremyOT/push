@@ -1357,8 +1357,8 @@ func TestAgyScraper(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Run scraper in background with yolo=true to test push notification suppression
-	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", true)
+	// Run scraper in background with yolo=false
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", false)
 
 	// Wait and verify first batch of messages
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -1388,9 +1388,6 @@ func TestAgyScraper(t *testing.T) {
 		}
 		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "awaiting" {
 			approvalCardFound = true
-			if !m.Quiet {
-				t.Error("Expected approval card to be Quiet in YOLO mode")
-			}
 		}
 	}
 	if !userMsgFound || !modelMsgFound || !approvalCardFound {
@@ -1629,6 +1626,89 @@ func TestTranslateAgentArgs(t *testing.T) {
 func TestGeminiAgentScriptContinueAlias(t *testing.T) {
 	if !strings.Contains(geminiAgentScript, "--resume|--continue)") {
 		t.Error("gemini-agent script does not contain --resume|--continue) alias parsing")
+	}
+}
+
+func TestAgyScraperYolo(t *testing.T) {
+	// Create a temp file for the transcript
+	tmpFile, err := os.CreateTemp("", "transcript_yolo_*.jsonl")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write initial lines
+	lines := []string{
+		`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-24T15:34:23Z","content":"<USER_REQUEST>\nHello Scraper\n</USER_REQUEST>"}`,
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:25Z","content":"I am planning to run a command.","thinking":"Let me check files first","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}`,
+	}
+	for _, l := range lines {
+		if _, err := tmpFile.WriteString(l + "\n"); err != nil {
+			t.Fatalf("Failed to write to temp file: %v", err)
+		}
+	}
+	tmpFile.Sync()
+
+	received := make(chan Interaction, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/interactions" && r.Method == "POST" {
+			var i Interaction
+			if err := json.NewDecoder(r.Body).Decode(&i); err == nil {
+				received <- i
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	// Run scraper in background with yolo=true to test push notification and approval card suppression
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", true)
+
+	// Wait and verify first batch of messages
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+
+	var firstBatch []Interaction
+	expectedCount := 2 // User message (0), Model response (1), NO approval card
+	for len(firstBatch) < expectedCount {
+		select {
+		case i := <-received:
+			firstBatch = append(firstBatch, i)
+		case <-ctx.Done():
+			t.Fatalf("Timeout waiting for first batch, got %d messages (expected 2)", len(firstBatch))
+		}
+	}
+
+	// Verify details of first batch
+	userMsgFound := false
+	modelMsgFound := false
+	approvalCardFound := false
+	for _, m := range firstBatch {
+		if m.Identifier == "0" && m.IsUser && m.Kind == "status" && m.Message == "Hello Scraper" {
+			userMsgFound = true
+		}
+		if m.Identifier == "1" && !m.IsUser && m.Kind == "agent" && m.Status == "w" {
+			modelMsgFound = true
+		}
+		if m.Identifier == "1-approval" || strings.Contains(m.Title, "ToolPermission") || m.Kind == "approval" {
+			approvalCardFound = true
+		}
+	}
+	if !userMsgFound || !modelMsgFound {
+		t.Errorf("Missing expected messages in first batch. User:%v, Model:%v", userMsgFound, modelMsgFound)
+	}
+	if approvalCardFound {
+		t.Error("Did not expect any approval card / ToolPermission message in YOLO mode")
+	}
+
+	// Wait a bit more to ensure no late approval cards are sent
+	select {
+	case m := <-received:
+		if m.Identifier == "1-approval" || strings.Contains(m.Title, "ToolPermission") || m.Kind == "approval" {
+			t.Error("Received late approval card in YOLO mode")
+		}
+	case <-time.After(100 * time.Millisecond):
+		// Clean exit, no additional messages received
 	}
 }
 
