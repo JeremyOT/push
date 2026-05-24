@@ -86,3 +86,5 @@ go build -ldflags="-w -s" -o push main.go
 - Enhanced session status logic to automatically set thread status to "working" when the last message is a user message.
 - Implemented an animated "three dot" typing/working icon in the web UI.
 - Fixed iPhone layout issues by enabling full-screen support and adding safe-area-inset padding.
+- Resolved the user message infinite loop and message duplication issues: updated the `tmux` CLI client mode to ignore user messages with non-empty identifiers (scraped from logs), and updated `saveInteraction` to match scraped user messages to existing database records by session ID and content, updating their identifier to prevent duplication.
+

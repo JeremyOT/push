@@ -657,6 +657,17 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		}
 		defer tx.Rollback()
 
+		if i.IsUser {
+			var matchID int64
+			err := tx.QueryRow("SELECT id FROM interactions WHERE session_id = ? AND is_user = 1 AND identifier = '' AND (message = ? OR message = ?) ORDER BY id DESC LIMIT 1", i.SessionID, i.Message, i.DetailedMessage).Scan(&matchID)
+			if err == nil {
+				_, err = tx.Exec("UPDATE interactions SET identifier = ? WHERE id = ?", i.Identifier, matchID)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
 		// Check if it already exists
 		var id int64
 		var timestamp time.Time
@@ -1043,7 +1054,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 					data, _ := json.Marshal(i)
 					fmt.Fprintf(stdout, "%s\n", string(data))
 				} else if mode == "tmux" {
-					if i.IsUser {
+					if i.IsUser && i.Identifier == "" {
 						msg := i.Message
 						if clientID != "" {
 							prefix1 := clientID + ": "

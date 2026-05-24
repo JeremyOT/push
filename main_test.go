@@ -1437,4 +1437,64 @@ func TestAgyScraper(t *testing.T) {
 	}
 }
 
+func TestUserMessageDeduplication(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// 1. Save original user message from Web UI (no identifier)
+	orig := Interaction{
+		IsUser:    true,
+		Message:   "Hello World",
+		SessionID: "sess-abc",
+	}
+	err := saveInteraction(db, &orig)
+	if err != nil {
+		t.Fatalf("Failed to save original: %v", err)
+	}
+	if orig.ID == 0 {
+		t.Fatal("Expected non-zero ID for original")
+	}
+	if orig.Identifier != "" {
+		t.Errorf("Expected empty identifier for original, got '%s'", orig.Identifier)
+	}
+
+	// 2. Save scraped user message (has identifier and same content)
+	scraped := Interaction{
+		IsUser:          true,
+		Message:         "Hello World",
+		DetailedMessage: "Hello World",
+		Identifier:      "step-0",
+		SessionID:       "sess-abc",
+	}
+	err = saveInteraction(db, &scraped)
+	if err != nil {
+		t.Fatalf("Failed to save scraped: %v", err)
+	}
+	if scraped.ID != orig.ID {
+		t.Errorf("Expected scraped message to update original ID %d, but got ID %d", orig.ID, scraped.ID)
+	}
+
+	// Verify DB has only 1 row
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = 'sess-abc'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected exactly 1 interaction, got %d", count)
+	}
+
+	// Verify identifier was updated
+	var ident string
+	err = db.QueryRow("SELECT identifier FROM interactions WHERE id = ?", orig.ID).Scan(&ident)
+	if err != nil {
+		t.Fatalf("Failed to query identifier: %v", err)
+	}
+	if ident != "step-0" {
+		t.Errorf("Expected identifier to be 'step-0', got '%s'", ident)
+	}
+}
+
+
 
