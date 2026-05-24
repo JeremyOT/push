@@ -499,7 +499,24 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         if (!thread || thread.id === 't1') return true; // Main feed shows everything
         return m.sessionId === thread.sessionId;
     });
-    return filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
+    return filtered.sort((a, b) => {
+        if (thread && thread.agent === 'antigravity') {
+            const aIdx = a.identifier ? parseInt(a.identifier, 10) : NaN;
+            const bIdx = b.identifier ? parseInt(b.identifier, 10) : NaN;
+            const aHasIdx = !isNaN(aIdx);
+            const bHasIdx = !isNaN(bIdx);
+            if (aHasIdx && bHasIdx) {
+                return aIdx - bIdx;
+            }
+            if (aHasIdx && !bHasIdx) {
+                return -1;
+            }
+            if (!aHasIdx && bHasIdx) {
+                return 1;
+            }
+        }
+        return (a.id || 0) - (b.id || 0);
+    });
   }, [messages, thread]);
 
   React.useEffect(() => {

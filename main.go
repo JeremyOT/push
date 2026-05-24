@@ -681,7 +681,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingSessionID string
 		var existingSessionPath string
 		var existingIsUser bool
-		err = tx.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ?", i.Identifier).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
+		err = tx.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ? AND (session_id = ? OR ? = '')", i.Identifier, i.SessionID, i.SessionID).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
 		if err == nil {
 			// Exists, update it
 			if i.Title == "" {

@@ -1515,5 +1515,50 @@ func TestGeminiAgentScriptCleanup(t *testing.T) {
 	}
 }
 
+func TestAgySessionIsolation(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// 1. Save an interaction for session A
+	iA := Interaction{
+		Identifier: "step-10",
+		SessionID:  "sess-a",
+		Message:    "Message from A",
+		IsUser:     false,
+	}
+	err := saveInteraction(db, &iA)
+	if err != nil {
+		t.Fatalf("Failed to save session A: %v", err)
+	}
+
+	// 2. Save an interaction for session B with the SAME identifier
+	iB := Interaction{
+		Identifier: "step-10",
+		SessionID:  "sess-b",
+		Message:    "Message from B",
+		IsUser:     false,
+	}
+	err = saveInteraction(db, &iB)
+	if err != nil {
+		t.Fatalf("Failed to save session B: %v", err)
+	}
+
+	// 3. Verify they are separate rows (different IDs)
+	if iA.ID == iB.ID {
+		t.Errorf("Expected different IDs for separate sessions, but both got ID %d", iA.ID)
+	}
+
+	// 4. Verify count of interactions in DB is 2
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query count: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("Expected exactly 2 interactions in database, got %d", count)
+	}
+}
+
 
 
