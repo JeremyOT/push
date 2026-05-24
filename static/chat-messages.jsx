@@ -198,7 +198,7 @@ function ToolBlock({ msg, theme, expanded, onToggle }) {
 
 function ApprovalCard({ msg, theme, decision, onDecide }) {
   const a = AGENTS[msg.agent];
-  const decided = !!decision;
+  const decided = !!decision || msg.status === 'done';
   return (
     <div style={{ display: 'flex', gap: 10, maxWidth: '92%' }}>
       <AgentMark agent={msg.agent} size={26} theme={theme} ring />
@@ -242,8 +242,10 @@ function ApprovalCard({ msg, theme, decision, onDecide }) {
                 fontFamily: FONT_MONO, fontSize: 12, color: theme.fgMuted,
                 display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                {decision.includes('Approve') || decision.includes('Allow') ? (
+                {decision && (decision.includes('Approve') || decision.includes('Allow')) ? (
                   <><IconCheck size={14} style={{ color: theme.ok }} /> {decision} · running now</>
+                ) : !decision ? (
+                  <><IconCheck size={14} style={{ color: theme.ok }} /> Allowed · running now</>
                 ) : (
                   <><IconX size={14} style={{ color: theme.err }} /> {decision}</>
                 )}

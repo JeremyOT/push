@@ -1325,4 +1325,116 @@ loop:
 	}
 }
 
+func TestAgyScraper(t *testing.T) {
+	// Create a temp file for the transcript
+	tmpFile, err := os.CreateTemp("", "transcript_*.jsonl")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write initial lines
+	lines := []string{
+		`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-24T15:34:23Z","content":"<USER_REQUEST>\nHello Scraper\n</USER_REQUEST>"}`,
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:25Z","content":"I am planning to run a command.","thinking":"Let me check files first","tool_calls":[{"name":"run_command","args":{"CommandLine":"ls"}}]}`,
+	}
+	for _, l := range lines {
+		if _, err := tmpFile.WriteString(l + "\n"); err != nil {
+			t.Fatalf("Failed to write to temp file: %v", err)
+		}
+	}
+	tmpFile.Sync()
+
+	received := make(chan Interaction, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/interactions" && r.Method == "POST" {
+			var i Interaction
+			if err := json.NewDecoder(r.Body).Decode(&i); err == nil {
+				received <- i
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	// Run scraper in background
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path")
+
+	// Wait and verify first batch of messages
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var firstBatch []Interaction
+	expectedCount := 3 // User message (0), Model response (1), Approval card (1-approval)
+	for len(firstBatch) < expectedCount {
+		select {
+		case i := <-received:
+			firstBatch = append(firstBatch, i)
+		case <-ctx.Done():
+			t.Fatalf("Timeout waiting for first batch, got %d messages", len(firstBatch))
+		}
+	}
+
+	// Verify details of first batch
+	userMsgFound := false
+	modelMsgFound := false
+	approvalCardFound := false
+	for _, m := range firstBatch {
+		if m.Identifier == "0" && m.IsUser && m.Kind == "status" && m.Message == "Hello Scraper" {
+			userMsgFound = true
+		}
+		if m.Identifier == "1" && !m.IsUser && m.Kind == "agent" && m.Status == "w" {
+			modelMsgFound = true
+		}
+		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "awaiting" {
+			approvalCardFound = true
+		}
+	}
+	if !userMsgFound || !modelMsgFound || !approvalCardFound {
+		t.Errorf("Missing expected messages in first batch. User:%v, Model:%v, Approval:%v", userMsgFound, modelMsgFound, approvalCardFound)
+	}
+
+	// Append more lines to simulate agent progress
+	moreLines := []string{
+		`{"step_index":2,"source":"MODEL","type":"RUN_COMMAND","status":"DONE","created_at":"2026-05-24T15:34:26Z","content":"main.go\nmain_test.go"}`,
+		`{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:27Z","content":"I have listed the files."}`,
+	}
+	for _, l := range moreLines {
+		if _, err := tmpFile.WriteString(l + "\n"); err != nil {
+			t.Fatalf("Failed to write more to temp file: %v", err)
+		}
+	}
+	tmpFile.Sync()
+
+	// Wait and verify second batch of messages
+	var secondBatch []Interaction
+	expectedCount2 := 3 // Resolve approval (1-approval), Tool output (2), Final model response (3)
+	for len(secondBatch) < expectedCount2 {
+		select {
+		case i := <-received:
+			secondBatch = append(secondBatch, i)
+		case <-ctx.Done():
+			t.Fatalf("Timeout waiting for second batch, got %d messages", len(secondBatch))
+		}
+	}
+
+	resolveFound := false
+	toolMsgFound := false
+	finalMsgFound := false
+	for _, m := range secondBatch {
+		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "d" {
+			resolveFound = true
+		}
+		if m.Identifier == "2" && m.Kind == "tool" && m.Message == "main.go\nmain_test.go" && m.Status == "d" {
+			toolMsgFound = true
+		}
+		if m.Identifier == "3" && m.Kind == "agent" && m.Status == "d" {
+			finalMsgFound = true
+		}
+	}
+	if !resolveFound || !toolMsgFound || !finalMsgFound {
+		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v", resolveFound, toolMsgFound, finalMsgFound)
+	}
+}
+
 

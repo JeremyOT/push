@@ -56,18 +56,27 @@ type Interaction struct {
 	SessionPath     string    `json:"session_path,omitempty"`
 }
 
+type AgyToolCall struct {
+	Name string          `json:"name"`
+	Args json.RawMessage `json:"args"`
+}
+
 type AgyLogLine struct {
 	ID        string `json:"id"`
+	StepIndex *int   `json:"step_index"`
 	Type      string `json:"type"`
 	Source    string `json:"source"`
+	Status    string `json:"status"`
 	SessionID string `json:"sessionId"`
 	Content   string `json:"content"`
 	Thoughts  []struct {
 		Subject     string `json:"subject"`
 		Description string `json:"description"`
 	} `json:"thoughts"`
-	Tokens map[string]int `json:"tokens"`
-	Set    interface{}    `json:"$set"`
+	Thinking  string         `json:"thinking"`
+	Tokens    map[string]int `json:"tokens"`
+	Set       interface{}    `json:"$set"`
+	ToolCalls []AgyToolCall  `json:"tool_calls"`
 }
 
 var vapidPrivateKey string
@@ -1749,6 +1758,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 	seenMessages := make(map[string]string) // Map id -> last content
 	sessionID := fallbackSessionID
 	lastProcessedMsgFinalized := false
+	lastApprovalID := ""
 
 	getLatestLogFile := func(dir string) string {
 		if logFile != "" {
@@ -1855,16 +1865,35 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 					continue
 				}
 
+				if data.StepIndex != nil && data.ID == "" {
+					data.ID = fmt.Sprintf("%d", *data.StepIndex)
+				}
+
 				if data.ID == "" {
 					continue
+				}
+
+				if lastApprovalID != "" && lastApprovalID != data.ID+"-approval" {
+					// Mark previous approval card as done/resolved
+					payload := Interaction{
+						Identifier:  lastApprovalID,
+						Status:      "d",
+						Kind:        "approval",
+						Agent:       "antigravity",
+						SessionID:   sessionID,
+						SessionPath: sessionPath,
+						Quiet:       true,
+					}
+					send(payload)
+					lastApprovalID = ""
 				}
 
 				if data.SessionID != "" {
 					sessionID = data.SessionID
 				}
 
-				isFinalized := data.Tokens != nil && data.Tokens["total"] > 0
-				thoughtText := ""
+				isFinalized := (data.Tokens != nil && data.Tokens["total"] > 0) || data.Status == "DONE" || data.Status == "ERROR"
+				thoughtText := data.Thinking
 				if len(data.Thoughts) > 0 {
 					var thoughts []string
 					for _, t := range data.Thoughts {
@@ -1878,10 +1907,20 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 				kind := "status"
 
 				if data.Source == "MODEL" {
-					kind = "agent"
-					isUser = false
-					if isFinalized {
-						status = "d"
+					if data.Type == "PLANNER_RESPONSE" {
+						kind = "agent"
+						isUser = false
+						if isFinalized && len(data.ToolCalls) == 0 {
+							status = "d"
+						} else {
+							status = "w"
+						}
+					} else if data.Type == "USER_INPUT" || data.Type == "CONVERSATION_HISTORY" {
+						continue // Ignore these or handle them as system
+					} else {
+						// Other model/system steps (like tool outputs RUN_COMMAND, VIEW_FILE, etc.)
+						kind = "tool"
+						status = "d" // The tool run itself is complete
 					}
 				} else if data.Source == "USER_EXPLICIT" {
 					kind = "status"
@@ -1910,7 +1949,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 					content = "Working..."
 				}
 				shortMsg := content
-				if len(shortMsg) > 100 {
+				if kind != "tool" && len(shortMsg) > 100 {
 					shortMsg = shortMsg[:100]
 				}
 
@@ -1936,6 +1975,50 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 				if seenMessages[data.ID] != fullLine {
 					seenMessages[data.ID] = fullLine
 					send(payload)
+
+					// If this is a PLANNER_RESPONSE with tool calls, generate an approval card
+					if data.Source == "MODEL" && data.Type == "PLANNER_RESPONSE" && len(data.ToolCalls) > 0 {
+						// Create approval details JSON
+						firstTool := data.ToolCalls[0]
+						details := map[string]interface{}{
+							"tool_name":  firstTool.Name,
+							"tool_input": firstTool.Args,
+						}
+						// If the tool is a command execution, map to standard type/command format
+						if firstTool.Name == "run_command" {
+							var argsMap map[string]interface{}
+							if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
+								if cmdVal, ok := argsMap["CommandLine"]; ok {
+									details["type"] = "exec"
+									details["command"] = cmdVal
+								}
+							}
+						} else if firstTool.Name == "write_to_file" || firstTool.Name == "replace_file_content" || firstTool.Name == "multi_replace_file_content" {
+							var argsMap map[string]interface{}
+							if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
+								if fileVal, ok := argsMap["TargetFile"]; ok {
+									details["type"] = "edit"
+									details["fileName"] = fileVal
+								}
+							}
+						}
+						detailsJSON, _ := json.Marshal(details)
+
+						approvalPayload := Interaction{
+							Identifier:      data.ID + "-approval",
+							Message:         "Approval requested",
+							DetailedMessage: string(detailsJSON),
+							Title:           "ToolPermission",
+							Agent:           "antigravity",
+							Kind:            "approval",
+							Status:          "awaiting",
+							SessionID:       sessionID,
+							SessionPath:     sessionPath,
+							Quiet:           false, // Pop up the approval card
+						}
+						send(approvalPayload)
+						lastApprovalID = data.ID + "-approval"
+					}
 				}
 				lastProcessedMsgFinalized = isFinalized
 			}

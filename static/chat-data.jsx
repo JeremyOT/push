@@ -42,6 +42,14 @@ const AGENTS = {
     color: '#8b5cf6',
     colorSoft: 'rgba(139,92,246,0.16)',
   },
+  antigravity: {
+    id: 'antigravity',
+    name: 'Antigravity',
+    short: 'AG',
+    model: 'agy',
+    color: '#ec4899',
+    colorSoft: 'rgba(236,72,153,0.16)',
+  },
 };
 
 // status: 'done' | 'idle' | 'working' | 'error' | 'awaiting'

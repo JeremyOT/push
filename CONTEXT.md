@@ -63,6 +63,9 @@ go build -ldflags="-w -s" -o push main.go
 - **Agent Restarts:** Use `/restart` to trigger a fresh start (new session) or `/restart resume` to restart while keeping the current session. The `gemini-agent` script manages the process lifecycle using UNIX signals (`SIGUSR1` for 101, `SIGUSR2` for 102).
 
 ## Recent Changes
+- Fixed Antigravity message propagation and UI syncing: aligned `AgyLogLine` struct to support the `step_index`, `status`, `thinking`, and `tool_calls` fields of `transcript_full.jsonl`, mapping step indexes to unique identifiers to prevent message skipping.
+- Enhanced tool call integration for Antigravity: mapped model tool execution steps to a dedicated `tool` message kind (preventing truncating console outputs), and added dynamic `ToolPermission` approval cards that automatically resolve/clear when the agent progresses.
+- Registered Antigravity as a first-class agent in the client-side configuration with custom fuchsia styling, ring-rendered avatar, and "AG" short representation.
 - Improved Antigravity log streaming logic and responsiveness: replaced `bufio.Scanner` with a robust `bufio.Reader` and line accumulator in `main.go`, and reduced polling interval to 100ms for a real-time experience.
 - Refined Antigravity user message parsing: the internal Go scraper now extracts and displays only the content within `<USER_REQUEST>` tags for `USER_EXPLICIT` messages.
 - Refactored Antigravity (agy) integration to rely exclusively on parsing `transcript_full.jsonl`, eliminating the use of hooks and centralizing messaging logic in the native Go scraper.

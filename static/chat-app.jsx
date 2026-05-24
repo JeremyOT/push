@@ -118,7 +118,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         }
       } catch (e) {}
       
-      return { ...base, kind: 'approval', agent: agentId, summary, risk, actions };
+      return { ...base, kind: 'approval', agent: agentId, summary, risk, actions, status };
     }
 
     if (msg.kind === 'tool' || displayTitle.includes('Run') || displayTitle.includes('$')) {
