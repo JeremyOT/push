@@ -58,9 +58,18 @@ rm -f "$RESTART_FILE"
 # Keep track of background processes for cleanup
 SCRAPER_PID=""
 PUSH_PID=""
+PUSH_PID_FILE=""
 AGY_LOG=""
 
 cleanup() {
+    if [ -n "$PUSH_PID_FILE" ] && [ -f "$PUSH_PID_FILE" ]; then
+        PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
+        if [ -n "$PID" ]; then
+            kill "$PID" 2>/dev/null
+            wait "$PID" 2>/dev/null
+        fi
+        rm -f "$PUSH_PID_FILE"
+    fi
     if [ -n "$SCRAPER_PID" ]; then
         kill "$SCRAPER_PID" 2>/dev/null
         wait "$SCRAPER_PID" 2>/dev/null
@@ -82,11 +91,7 @@ while true; do
     # Determine Session ID
     if [ "$RESUME" = true ]; then
         if [ "$AGENT_CMD" = "agy" ]; then
-            # agy doesn't have a direct --list-sessions yet, but --continue handles it.
-            # We'll use a placeholder or try to find it in the logs if needed.
-            # For now, let's just use a fixed ID for resumed agy sessions to keep it simple,
-            # or try to extract it from state.json if possible.
-            SESSION_ID="latest"
+            SESSION_ID="agy-pending"
         else
             SESSION_ID=$($AGENT_CMD --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
         fi
@@ -95,31 +100,34 @@ while true; do
             echo "Warning: No session found to resume. Initializing new session..."
             RESUME=false
         else
-            echo "Resuming session: $SESSION_ID"
+            if [ "$AGENT_CMD" != "agy" ]; then
+                echo "Resuming session: $SESSION_ID"
+            fi
         fi
     fi
 
     if [ "$RESUME" = false ]; then
-        echo "Initializing new session..."
         if [ "$AGENT_CMD" = "agy" ]; then
-            # Just use a random UUID for agy for now since we can't easily get it from the CLI
-            SESSION_ID=$(uuidgen)
+            SESSION_ID="agy-pending"
         else
+            echo "Initializing new session..."
             # Start and exit immediately to create the session
             echo "/quit" | $AGENT_CMD --skip-trust > /dev/null 2>&1
             SESSION_ID=$($AGENT_CMD --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
+            echo "Started session: $SESSION_ID"
         fi
-        echo "Started session: $SESSION_ID"
     fi
 
-    # Start push client in the background
-    $PUSH_CMD --cli-service tmux \
-        --session-id "$SESSION_ID" \
-        --session-name "$SESSION_NAME" \
-        --session-path "$SESSION_PATH" \
-        --model "$AGENT_CMD" \
-        --tmux-target "$TMUX_TARGET" &
-    PUSH_PID=$!
+    # Start push client in the background (only for non-agy; agy starts it dynamically after parsing conversation ID)
+    if [ "$AGENT_CMD" != "agy" ]; then
+        $PUSH_CMD --cli-service tmux \
+            --session-id "$SESSION_ID" \
+            --session-name "$SESSION_NAME" \
+            --session-path "$SESSION_PATH" \
+            --model "$AGENT_CMD" \
+            --tmux-target "$TMUX_TARGET" &
+        PUSH_PID=$!
+    fi
 
     # Antigravity log scraper integration
     SCRAPER_PID=""
@@ -131,6 +139,7 @@ while true; do
         fi
         AGY_LOG="/tmp/agy-$UUID.log"
         touch "$AGY_LOG"
+        PUSH_PID_FILE="/tmp/push-client-$UUID.pid"
 
         # Start a discovery background process
         (
@@ -146,6 +155,21 @@ while true; do
                 fi
             done
 
+            if [ "$RESUME" = true ]; then
+                echo "Resuming session: $CONV_ID"
+            else
+                echo "Started session: $CONV_ID"
+            fi
+
+            # Start push client in the background now that we have the session/conversation ID
+            $PUSH_CMD --cli-service tmux \
+                --session-id "$CONV_ID" \
+                --session-name "$SESSION_NAME" \
+                --session-path "$SESSION_PATH" \
+                --model "$AGENT_CMD" \
+                --tmux-target "$TMUX_TARGET" &
+            echo $! > "$PUSH_PID_FILE"
+
             LOG_FILE="$APP_DATA_DIR/brain/$CONV_ID/.system_generated/logs/transcript_full.jsonl"
             echo "Started internal agy log scraper for $LOG_FILE"
 
@@ -157,7 +181,7 @@ while true; do
             exec $PUSH_CMD --internal-agy-scraper \
                 --agy-log-file "$LOG_FILE" \
                 --agy-backend-url "http://${PUSH_ADDRESS:-127.0.0.1:8089}" \
-                --agy-fallback-session-id "$SESSION_ID" \
+                --agy-fallback-session-id "$CONV_ID" \
                 --agy-session-path "$SESSION_PATH" \
                 $YOLO_FLAG
         ) &
