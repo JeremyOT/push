@@ -499,24 +499,61 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         if (!thread || thread.id === 't1') return true; // Main feed shows everything
         return m.sessionId === thread.sessionId;
     });
-    return filtered.sort((a, b) => {
-        if (thread && thread.agent === 'antigravity') {
-            const aIdx = a.identifier ? parseInt(a.identifier, 10) : NaN;
-            const bIdx = b.identifier ? parseInt(b.identifier, 10) : NaN;
-            const aHasIdx = !isNaN(aIdx);
-            const bHasIdx = !isNaN(bIdx);
-            if (aHasIdx && bHasIdx) {
-                return aIdx - bIdx;
+    if (thread && thread.agent === 'antigravity') {
+        // Build sorted list of indexed messages for binary/linear position search
+        const indexedMsgs = [];
+        filtered.forEach(m => {
+            const idx = m.identifier ? parseInt(m.identifier, 10) : NaN;
+            if (!isNaN(idx)) {
+                indexedMsgs.push({ id: m.id || 0, index: idx });
             }
-            if (aHasIdx && !bHasIdx) {
-                return -1;
+        });
+        indexedMsgs.sort((a, b) => a.id - b.id);
+
+        const indexedMap = new Map();
+        indexedMsgs.forEach(item => indexedMap.set(item.id, item.index));
+
+        const getSortKey = (m) => {
+            const mId = m.id || 0;
+            const index = indexedMap.get(mId);
+            if (index !== undefined) {
+                return { major: index, minor: 0, id: mId };
             }
-            if (!aHasIdx && bHasIdx) {
-                return 1;
+            // Message does not have a step index. Find the closest previous indexed message.
+            let prevIndex = -1;
+            for (let i = indexedMsgs.length - 1; i >= 0; i--) {
+                if (indexedMsgs[i].id < mId) {
+                    prevIndex = indexedMsgs[i].index;
+                    break;
+                }
             }
-        }
-        return (a.id || 0) - (b.id || 0);
-    });
+            return { major: prevIndex, minor: 1, id: mId };
+        };
+
+        const cache = new Map();
+        return filtered.sort((a, b) => {
+            const idA = a.id || 0;
+            const idB = b.id || 0;
+            let keyA = cache.get(idA);
+            if (!keyA) {
+                keyA = getSortKey(a);
+                cache.set(idA, keyA);
+            }
+            let keyB = cache.get(idB);
+            if (!keyB) {
+                keyB = getSortKey(b);
+                cache.set(idB, keyB);
+            }
+            if (keyA.major !== keyB.major) {
+                return keyA.major - keyB.major;
+            }
+            if (keyA.minor !== keyB.minor) {
+                return keyA.minor - keyB.minor;
+            }
+            return keyA.id - keyB.id;
+        });
+    }
+    return filtered.sort((a, b) => (a.id || 0) - (b.id || 0));
   }, [messages, thread]);
 
   React.useEffect(() => {
