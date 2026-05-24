@@ -189,21 +189,23 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         });
         return;
     }
-
     if (msg.id !== 0) {
         setMessages(prev => {
+            const idx = prev.findIndex(m => m.id === msg.id);
+            if (idx !== -1) {
+                const next = [...prev];
+                next[idx] = mapped;
+                return next;
+            }
             if (msg.identifier) {
-                const idx = prev.findIndex(m => m.identifier === msg.identifier);
-                if (idx !== -1) {
+                const idxByIdent = prev.findIndex(m => m.identifier === msg.identifier);
+                if (idxByIdent !== -1) {
                     const next = [...prev];
-                    next[idx] = mapped;
+                    next[idxByIdent] = mapped;
                     return next;
                 }
             }
-            if (!prev.some(m => m.id === msg.id)) {
-                return [...prev, mapped];
-            }
-            return prev;
+            return [...prev, mapped];
         });
 
         if (msg.id > newestId.current) {
