@@ -89,5 +89,6 @@ go build -ldflags="-w -s" -o push main.go
 - Resolved the user message infinite loop and message duplication issues: updated the `tmux` CLI client mode to ignore user messages with non-empty identifiers (scraped from logs), and updated `saveInteraction` to match scraped user messages to existing database records by session ID and content, updating their identifier to prevent duplication.
 - Suppressed push notifications for tool permission approvals when running the agent in `--yolo` mode by setting the approval interaction's `quiet` property to match the `yolo` flag.
 - Transitioned thread status back to "ready" immediately when the agent finishes execution (finalized `PLANNER_RESPONSE` with no tool calls) to stop the typing indicator and unlock the composer input.
+- Added a robust `cleanup()` function and `EXIT` trap to the embedded `gemini-agent` script to ensure that backgrounded push client processes and temporary log scrapers/files are properly terminated and deleted when the agent exits or is interrupted, preventing process proliferation. Added the `TestGeminiAgentScriptCleanup` unit test to verify this.
 
 

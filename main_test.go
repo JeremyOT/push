@@ -1503,5 +1503,17 @@ func TestUserMessageDeduplication(t *testing.T) {
 	}
 }
 
+func TestGeminiAgentScriptCleanup(t *testing.T) {
+	if !strings.Contains(geminiAgentScript, "cleanup()") {
+		t.Error("gemini-agent script does not contain cleanup() function definition")
+	}
+	if !strings.Contains(geminiAgentScript, "trap cleanup EXIT") {
+		t.Error("gemini-agent script does not set trap for EXIT")
+	}
+	if !strings.Contains(geminiAgentScript, "kill \"$PUSH_PID\"") && !strings.Contains(geminiAgentScript, "kill $PUSH_PID") {
+		t.Error("gemini-agent script does not kill PUSH_PID during cleanup")
+	}
+}
+
 
 

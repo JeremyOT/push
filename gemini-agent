@@ -55,6 +55,29 @@ RESTART_FILE=".gemini-agent.restart"
 # Ensure clean state
 rm -f "$RESTART_FILE"
 
+# Keep track of background processes for cleanup
+SCRAPER_PID=""
+PUSH_PID=""
+AGY_LOG=""
+
+cleanup() {
+    if [ -n "$SCRAPER_PID" ]; then
+        kill "$SCRAPER_PID" 2>/dev/null
+        wait "$SCRAPER_PID" 2>/dev/null
+        SCRAPER_PID=""
+    fi
+    if [ -n "$PUSH_PID" ]; then
+        kill "$PUSH_PID" 2>/dev/null
+        wait "$PUSH_PID" 2>/dev/null
+        PUSH_PID=""
+    fi
+    if [ -n "$AGY_LOG" ] && [ -f "$AGY_LOG" ]; then
+        rm -f "$AGY_LOG"
+        AGY_LOG=""
+    fi
+}
+trap cleanup EXIT
+
 while true; do
     # Determine Session ID
     if [ "$RESUME" = true ]; then
@@ -156,9 +179,7 @@ while true; do
     EXIT_CODE=$?
 
     # Cleanup
-    kill $SCRAPER_PID 2>/dev/null
-    wait $SCRAPER_PID 2>/dev/null
-    rm -f "$AGY_LOG"
+    cleanup
     
     # Handle restart requests
     if [ -f "$RESTART_FILE" ]; then
