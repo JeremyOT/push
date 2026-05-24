@@ -1357,8 +1357,8 @@ func TestAgyScraper(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Run scraper in background
-	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path")
+	// Run scraper in background with yolo=true to test push notification suppression
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", true)
 
 	// Wait and verify first batch of messages
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -1388,6 +1388,9 @@ func TestAgyScraper(t *testing.T) {
 		}
 		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "awaiting" {
 			approvalCardFound = true
+			if !m.Quiet {
+				t.Error("Expected approval card to be Quiet in YOLO mode")
+			}
 		}
 	}
 	if !userMsgFound || !modelMsgFound || !approvalCardFound {
@@ -1408,7 +1411,7 @@ func TestAgyScraper(t *testing.T) {
 
 	// Wait and verify second batch of messages
 	var secondBatch []Interaction
-	expectedCount2 := 3 // Resolve approval (1-approval), Tool output (2), Final model response (3)
+	expectedCount2 := 4 // Resolve approval (1-approval), Tool output (2), Final model response (3), and Ready status transition (r)
 	for len(secondBatch) < expectedCount2 {
 		select {
 		case i := <-received:
@@ -1421,6 +1424,7 @@ func TestAgyScraper(t *testing.T) {
 	resolveFound := false
 	toolMsgFound := false
 	finalMsgFound := false
+	readyStatusFound := false
 	for _, m := range secondBatch {
 		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "d" {
 			resolveFound = true
@@ -1431,9 +1435,12 @@ func TestAgyScraper(t *testing.T) {
 		if m.Identifier == "3" && m.Kind == "agent" && m.Status == "d" {
 			finalMsgFound = true
 		}
+		if m.Status == "r" && m.Kind == "status" && m.Message == "Ready" {
+			readyStatusFound = true
+		}
 	}
-	if !resolveFound || !toolMsgFound || !finalMsgFound {
-		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v", resolveFound, toolMsgFound, finalMsgFound)
+	if !resolveFound || !toolMsgFound || !finalMsgFound || !readyStatusFound {
+		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v, Ready:%v", resolveFound, toolMsgFound, finalMsgFound, readyStatusFound)
 	}
 }
 

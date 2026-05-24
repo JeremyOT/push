@@ -87,4 +87,7 @@ go build -ldflags="-w -s" -o push main.go
 - Implemented an animated "three dot" typing/working icon in the web UI.
 - Fixed iPhone layout issues by enabling full-screen support and adding safe-area-inset padding.
 - Resolved the user message infinite loop and message duplication issues: updated the `tmux` CLI client mode to ignore user messages with non-empty identifiers (scraped from logs), and updated `saveInteraction` to match scraped user messages to existing database records by session ID and content, updating their identifier to prevent duplication.
+- Suppressed push notifications for tool permission approvals when running the agent in `--yolo` mode by setting the approval interaction's `quiet` property to match the `yolo` flag.
+- Transitioned thread status back to "ready" immediately when the agent finishes execution (finalized `PLANNER_RESPONSE` with no tool calls) to stop the typing indicator and unlock the composer input.
+
 

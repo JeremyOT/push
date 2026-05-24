@@ -157,7 +157,7 @@ func main() {
 	flag.Parse()
 
 	if *internalAgyScraper {
-		runAgyScraper(*agyLogDir, *agyLogFile, *agyBackendURL, *agyFallbackSessionID, *agySessionPath)
+		runAgyScraper(*agyLogDir, *agyLogFile, *agyBackendURL, *agyFallbackSessionID, *agySessionPath, *yoloAgent)
 		return
 	}
 
@@ -1754,7 +1754,7 @@ func runGeminiAgent(args []string, address string) {
 	}
 }
 
-func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath string) {
+func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath string, yolo bool) {
 	if logFile != "" {
 		fmt.Fprintf(os.Stderr, "Watching log file: %s\n", logFile)
 	} else {
@@ -1923,6 +1923,17 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 						isUser = false
 						if isFinalized && len(data.ToolCalls) == 0 {
 							status = "d"
+							go func() {
+								time.Sleep(50 * time.Millisecond)
+								send(Interaction{
+									SessionID:   sessionID,
+									SessionPath: sessionPath,
+									Status:      "r",
+									Kind:        "status",
+									Message:     "Ready",
+									Quiet:       true,
+								})
+							}()
 						} else {
 							status = "w"
 						}
@@ -2025,7 +2036,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 							Status:          "awaiting",
 							SessionID:       sessionID,
 							SessionPath:     sessionPath,
-							Quiet:           false, // Pop up the approval card
+							Quiet:           yolo, // Quiet in yolo mode
 						}
 						send(approvalPayload)
 						lastApprovalID = data.ID + "-approval"
