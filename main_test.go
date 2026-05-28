@@ -1712,5 +1712,107 @@ func TestAgyScraperYolo(t *testing.T) {
 	}
 }
 
+func TestRenameSession(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// Insert test interaction
+	interaction := Interaction{
+		Message:   "Hello Rename",
+		SessionID: "old-session-123",
+	}
+	err := saveInteraction(db, &interaction)
+	if err != nil {
+		t.Fatalf("Failed to save interaction: %v", err)
+	}
+
+	handler := handleRenameSession(db)
+
+	// Call handler with missing params
+	reqErr := httptest.NewRequest("POST", "/rename-session", nil)
+	wErr := httptest.NewRecorder()
+	handler(wErr, reqErr)
+	if wErr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400 for missing params, got %d", wErr.Code)
+	}
+
+	// Call handler to rename session
+	req := httptest.NewRequest("POST", "/rename-session?old=old-session-123&new=new-session-456", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Verify database was updated
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = ?", "new-session-456").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query database: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 interaction with new session_id, got %d", count)
+	}
+
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = ?", "old-session-123").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query database: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected 0 interactions with old session_id, got %d", count)
+	}
+}
+
+func TestNormalizeArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []string
+		expected []string
+	}{
+		{
+			name:     "no dashes",
+			input:    []string{"cmd", "arg1", "arg2"},
+			expected: []string{"cmd", "arg1", "arg2"},
+		},
+		{
+			name:     "em-dash flags",
+			input:    []string{"cmd", "—antigravity", "—yolo"},
+			expected: []string{"cmd", "--antigravity", "--yolo"},
+		},
+		{
+			name:     "en-dash flags",
+			input:    []string{"cmd", "–antigravity", "–yolo"},
+			expected: []string{"cmd", "--antigravity", "--yolo"},
+		},
+		{
+			name:     "mixed dash types and standard flags",
+			input:    []string{"cmd", "-standard", "--double", "—em", "–en"},
+			expected: []string{"cmd", "-standard", "--double", "--em", "--en"},
+		},
+		{
+			name:     "skip executable path normalization even if it starts with dash",
+			input:    []string{"—cmd", "—arg"},
+			expected: []string{"—cmd", "--arg"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := normalizeArgs(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Fatalf("Length mismatch: got %d, expected %d", len(result), len(tt.expected))
+			}
+			for i := range result {
+				if result[i] != tt.expected[i] {
+					t.Errorf("Mismatch at index %d: got %s, expected %s", i, result[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+
 
 

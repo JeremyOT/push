@@ -108,7 +108,12 @@ while true; do
 
     if [ "$RESUME" = false ]; then
         if [ "$AGENT_CMD" = "agy" ]; then
-            SESSION_ID="agy-pending"
+            UUID=$(uuidgen 2>/dev/null)
+            if [ -z "$UUID" ]; then
+                UUID=$(python3 -c "import uuid; print(uuid.uuid4())")
+            fi
+            SESSION_ID="$UUID"
+            echo "Started session: $SESSION_ID"
         else
             echo "Initializing new session..."
             # Start and exit immediately to create the session
@@ -118,15 +123,25 @@ while true; do
         fi
     fi
 
-    # Start push client in the background (only for non-agy; agy starts it dynamically after parsing conversation ID)
-    if [ "$AGENT_CMD" != "agy" ]; then
+    # Start push client in the background (for non-agy, and for agy fresh sessions at startup)
+    if [ "$AGENT_CMD" != "agy" ] || [ "$RESUME" = false ]; then
         $PUSH_CMD --cli-service tmux \
             --session-id "$SESSION_ID" \
             --session-name "$SESSION_NAME" \
             --session-path "$SESSION_PATH" \
             --model "$AGENT_CMD" \
             --tmux-target "$TMUX_TARGET" &
-        PUSH_PID=$!
+        if [ "$AGENT_CMD" = "agy" ]; then
+            # We need to temporarily set AGY_LOG for the filename check in PUSH_PID_FILE
+            UUID_TEMP=$(uuidgen 2>/dev/null)
+            if [ -z "$UUID_TEMP" ]; then
+                UUID_TEMP=$(python3 -c "import uuid; print(uuid.uuid4())")
+            fi
+            PUSH_PID_FILE="/tmp/push-client-$UUID_TEMP.pid"
+            echo $! > "$PUSH_PID_FILE"
+        else
+            PUSH_PID=$!
+        fi
     fi
 
     # Antigravity log scraper integration
@@ -139,7 +154,9 @@ while true; do
         fi
         AGY_LOG="/tmp/agy-$UUID.log"
         touch "$AGY_LOG"
-        PUSH_PID_FILE="/tmp/push-client-$UUID.pid"
+        
+        # Keep track of the original startup push client if we started it
+        STARTUP_PUSH_PID_FILE="$PUSH_PID_FILE"
 
         # Start a discovery background process
         (
@@ -150,25 +167,55 @@ while true; do
                     CONV_ID=$(grep -m 1 "Streaming conversation" "$AGY_LOG" | awk '{print $NF}')
                     APP_DATA_DIR=$(grep -m 1 "Creating CLI server backend:" "$AGY_LOG" | sed -n 's/.*appDataDir=\([^ ]*\).*/\1/p')
                 fi
-                if [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; then
+                if [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; do
                     sleep 0.5
                 fi
             done
 
             if [ "$RESUME" = true ]; then
                 echo "Resuming session: $CONV_ID"
+
+                # Start push client in the background now that we have the session/conversation ID
+                $PUSH_CMD --cli-service tmux \
+                    --session-id "$CONV_ID" \
+                    --session-name "$SESSION_NAME" \
+                    --session-path "$SESSION_PATH" \
+                    --model "$AGENT_CMD" \
+                    --tmux-target "$TMUX_TARGET" &
+                # Store the PID globally in the new temp file path (which the parent clean up script will read)
+                PUSH_PID_FILE_NEW="/tmp/push-client-$CONV_ID.pid"
+                echo $! > "$PUSH_PID_FILE_NEW"
+                
+                # Make sure the parent trap sees this new file
+                # Since we are in a subshell, we cannot update PUSH_PID_FILE in parent shell directly,
+                # but we can write the new PID path to a known location, or we can rename the pid file.
+                mv "$STARTUP_PUSH_PID_FILE" "$PUSH_PID_FILE_NEW" 2>/dev/null
+                echo $! > "$PUSH_PID_FILE_NEW"
             else
                 echo "Started session: $CONV_ID"
-            fi
+                
+                # Rename the session ID in the database from the temporary UUID to the conversation ID
+                curl -s -X POST "http://${PUSH_ADDRESS:-127.0.0.1:8089}/rename-session?old=$SESSION_ID&new=$CONV_ID" >/dev/null
 
-            # Start push client in the background now that we have the session/conversation ID
-            $PUSH_CMD --cli-service tmux \
-                --session-id "$CONV_ID" \
-                --session-name "$SESSION_NAME" \
-                --session-path "$SESSION_PATH" \
-                --model "$AGENT_CMD" \
-                --tmux-target "$TMUX_TARGET" &
-            echo $! > "$PUSH_PID_FILE"
+                # Kill the old startup push client
+                PID=$(cat "$STARTUP_PUSH_PID_FILE" 2>/dev/null)
+                if [ -n "$PID" ]; then
+                    kill "$PID" 2>/dev/null
+                    wait "$PID" 2>/dev/null
+                fi
+                rm -f "$STARTUP_PUSH_PID_FILE"
+
+                # Start the new push client with the correct conversation ID
+                $PUSH_CMD --cli-service tmux \
+                    --session-id "$CONV_ID" \
+                    --session-name "$SESSION_NAME" \
+                    --session-path "$SESSION_PATH" \
+                    --model "$AGENT_CMD" \
+                    --tmux-target "$TMUX_TARGET" &
+                
+                PUSH_PID_FILE_NEW="/tmp/push-client-$CONV_ID.pid"
+                echo $! > "$PUSH_PID_FILE_NEW"
+            fi
 
             LOG_FILE="$APP_DATA_DIR/brain/$CONV_ID/.system_generated/logs/transcript_full.jsonl"
             echo "Started internal agy log scraper for $LOG_FILE"

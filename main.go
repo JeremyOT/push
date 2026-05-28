@@ -123,6 +123,9 @@ var broadcaster = &Broadcaster{
 }
 
 func main() {
+	// Normalize em-dash (—) and en-dash (–) in command line arguments to standard hyphens
+	os.Args = normalizeArgs(os.Args)
+
 	defaultHostname, _ := os.Hostname()
 	address := flag.String("address", "127.0.0.1:8089", "Address and port to listen on (e.g., 127.0.0.1:8089)")
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
@@ -248,6 +251,7 @@ func main() {
 	http.HandleFunc("/interactions", handleInteractions(db))
 	http.HandleFunc("/service", handleService(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
+	http.HandleFunc("/rename-session", handleRenameSession(db))
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"publicKey": vapidPublicKey})
@@ -1633,6 +1637,27 @@ func handleSubscribe(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func handleRenameSession(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		oldID := r.URL.Query().Get("old")
+		newID := r.URL.Query().Get("new")
+		if oldID == "" || newID == "" {
+			http.Error(w, "Missing old or new session ID", http.StatusBadRequest)
+			return
+		}
+		_, err := db.Exec("UPDATE interactions SET session_id = ? WHERE session_id = ?", newID, oldID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
 func sendPushNotifications(db *sql.DB, title, message, link string) {
 	log.Printf("Sending push notifications for [%s]: %s (Link: %s)", title, message, link)
 
@@ -2084,6 +2109,22 @@ func translateAgentArgs(isAntigravity, resume, yolo bool, extraArgs []string) []
 		}
 	}
 	return agentArgs
+}
+
+func normalizeArgs(args []string) []string {
+	normalized := make([]string, len(args))
+	copy(normalized, args)
+	for i, arg := range normalized {
+		if i == 0 {
+			continue // Skip executable path
+		}
+		if strings.HasPrefix(arg, "—") { // em-dash (U+2014)
+			normalized[i] = "--" + strings.TrimPrefix(arg, "—")
+		} else if strings.HasPrefix(arg, "–") { // en-dash (U+2013)
+			normalized[i] = "--" + strings.TrimPrefix(arg, "–")
+		}
+	}
+	return normalized
 }
 
 
