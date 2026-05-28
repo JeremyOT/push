@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; padding: 0; background: #0b0d10; height: 100%; width: 100%; overflow: hidden; position: fixed; }
+  html, body { margin: 0; padding: 0; background: #0b0f19; height: 100%; width: 100%; overflow: hidden; position: fixed; }
   body { font-family: "Inter", -apple-system, system-ui, sans-serif; color: #e7eaee; -webkit-font-smoothing: antialiased; }
   #root { height: 100%; width: 100%; }
   * { box-sizing: border-box; }
@@ -27,10 +27,10 @@
     0% { opacity: 0; transform: translate(-50%, 20px); }
     100% { opacity: 1; transform: translate(-50%, 0); }
   }
-  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 999px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.45); }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.12); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.25); }
   
   /* Markdown styling */
   .markdown-body { line-height: 1.5; font-size: 14px; }
@@ -41,8 +41,21 @@
   .markdown-body h1 { font-size: 1.5em; }
   .markdown-body h2 { font-size: 1.3em; }
   .markdown-body h3 { font-size: 1.1em; }
-  .markdown-body code { font-family: "JetBrains Mono", monospace; font-size: 0.9em; padding: 0.2em 0.4em; border-radius: 4px; background: rgba(128,128,128,0.15); }
-  .markdown-body pre { padding: 12px; overflow: auto; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05); }
+  .markdown-body code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.88em;
+    padding: 0.2em 0.4em;
+    border-radius: 6px;
+    background: var(--code-bg-inline, rgba(255,255,255,0.06));
+    color: var(--code-fg-inline, inherit);
+  }
+  .markdown-body pre {
+    padding: 14px;
+    overflow: auto;
+    border-radius: 10px;
+    background: var(--code-bg, rgba(0,0,0,0.2));
+    border: 1px solid var(--border-color, rgba(255,255,255,0.05));
+  }
   .markdown-body pre code { padding: 0; background: transparent; font-size: 13px; }
   .markdown-body ul, .markdown-body ol { padding-left: 1.5em; }
   .markdown-body blockquote { padding-left: 1em; border-left: 3px solid rgba(128,128,128,0.35); color: #9aa3ad; }

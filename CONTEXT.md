@@ -101,6 +101,8 @@ go build -ldflags="-w -s" -o push main.go
 - Added client-side normalization in `static/chat-composer.jsx` to dynamically map em-dashes (`—`) and en-dashes (`–`) back to standard double-hyphens (`--`) upon sending a message to automatically correct macOS auto-correction/substitution issues while keeping standard spellcheck and autocapitalize features enabled.
 - Fixed a bash syntax error in the embedded `gemini-agent` launcher script (changed `do` back to `then` on line 170 in an `if` block) that broke fresh session runs.
 - Enhanced link styling and readability in the chat UI: added a `link` color token to theme configurations (#58a6ff for dark mode and #0969da for light mode) and styled `.markdown-body a` elements accordingly, eliminating low-contrast default blue links on dark backgrounds.
+- Modernized the application color palettes in `static/chat-theme.jsx`, transitioning dark mode to a premium deep slate-navy theme (#0b0f19 background, #111420 panels, and #171c2c hover states) with modern indigo accents (#6366f1/#4f46e5). Refined scrollbars to be thinner and translucent, and updated inline code / pre block container styles with cleaner backgrounds and borders.
+
 
 
 
