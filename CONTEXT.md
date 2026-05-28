@@ -99,6 +99,8 @@ go build -ldflags="-w -s" -o push main.go
 - Fixed a registration deadlock for fresh Antigravity runs: the script now launches the push client immediately using a temporary UUID to allow Web UI registrations, and then uses a new `/rename-session` API endpoint to seamlessly rename the session in the database and restart the push client under the real conversation ID once parsed. Added the `TestRenameSession` unit test.
 - Added CLI argument normalization for em-dash (`—`) and en-dash (`–`) characters to standard hyphens (`--`), correcting macOS auto-correction behavior when executing flags (e.g. `—antigravity` and `—yolo`). Added the `TestNormalizeArgs` unit test to verify this.
 - Added client-side normalization in `static/chat-composer.jsx` to dynamically map em-dashes (`—`) and en-dashes (`–`) back to standard double-hyphens (`--`) upon sending a message to automatically correct macOS auto-correction/substitution issues while keeping standard spellcheck and autocapitalize features enabled.
+- Fixed a bash syntax error in the embedded `gemini-agent` launcher script (changed `do` back to `then` on line 170 in an `if` block) that broke fresh session runs.
+
 
 
 

@@ -167,7 +167,7 @@ while true; do
                     CONV_ID=$(grep -m 1 "Streaming conversation" "$AGY_LOG" | awk '{print $NF}')
                     APP_DATA_DIR=$(grep -m 1 "Creating CLI server backend:" "$AGY_LOG" | sed -n 's/.*appDataDir=\([^ ]*\).*/\1/p')
                 fi
-                if [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; do
+                if [ -z "$CONV_ID" ] || [ -z "$APP_DATA_DIR" ]; then
                     sleep 0.5
                 fi
             done
