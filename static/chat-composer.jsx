@@ -56,7 +56,9 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
 
   const send = () => {
     if (!value.trim()) return;
-    onSend(value.trim());
+    // Replace em-dash (—) and en-dash (–) back to standard double hyphens
+    const cleaned = value.trim().replace(/—/g, '--').replace(/–/g, '--');
+    onSend(cleaned);
     setValue('');
   };
 
@@ -94,6 +96,9 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
           }}
           rows={1}
           placeholder={isWorking ? "Agent is working…" : "Send a message, or / for commands…"}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
           style={{
             all: 'unset', flex: 1, minWidth: 0,
             fontFamily: FONT_SANS, fontSize: 14, lineHeight: 1.45,
