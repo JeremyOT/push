@@ -47,7 +47,7 @@ function Markdown({ text, theme }) {
     <div 
       className="markdown-body"
       dangerouslySetInnerHTML={{ __html: html }}
-      style={{ color: 'inherit' }}
+      style={{ color: 'inherit', '--link-color': theme.link }}
     />
   );
 }
