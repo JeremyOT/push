@@ -96,9 +96,6 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
           }}
           rows={1}
           placeholder={isWorking ? "Agent is working…" : "Send a message, or / for commands…"}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
           style={{
             all: 'unset', flex: 1, minWidth: 0,
             fontFamily: FONT_SANS, fontSize: 14, lineHeight: 1.45,
