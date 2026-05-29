@@ -1900,12 +1900,16 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 					continue
 				}
 
-				if lastApprovalID != "" && lastApprovalID != data.ID+"-approval" {
-					// Mark previous approval card as done/resolved
+				if lastApprovalID != "" && lastApprovalID != data.ID+"-approval" && lastApprovalID != data.ID+"-question" {
+					// Mark previous card as done/resolved
+					resolvedKind := "approval"
+					if strings.HasSuffix(lastApprovalID, "-question") {
+						resolvedKind = "question"
+					}
 					payload := Interaction{
 						Identifier:  lastApprovalID,
 						Status:      "d",
-						Kind:        "approval",
+						Kind:        resolvedKind,
 						Agent:       "antigravity",
 						SessionID:   sessionID,
 						SessionPath: sessionPath,
@@ -2014,48 +2018,107 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 					seenMessages[data.ID] = fullLine
 					send(payload)
 
-					// If this is a PLANNER_RESPONSE with tool calls, generate an approval card (skip in YOLO mode)
-					if !yolo && data.Source == "MODEL" && data.Type == "PLANNER_RESPONSE" && len(data.ToolCalls) > 0 {
-						// Create approval details JSON
+					// Check for special tool calls like ask_question, or generate approval card (skip approval in YOLO mode)
+					if data.Source == "MODEL" && data.Type == "PLANNER_RESPONSE" && len(data.ToolCalls) > 0 {
 						firstTool := data.ToolCalls[0]
-						details := map[string]interface{}{
-							"tool_name":  firstTool.Name,
-							"tool_input": firstTool.Args,
-						}
-						// If the tool is a command execution, map to standard type/command format
-						if firstTool.Name == "run_command" {
-							var argsMap map[string]interface{}
-							if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
-								if cmdVal, ok := argsMap["CommandLine"]; ok {
-									details["type"] = "exec"
-									details["command"] = cmdVal
-								}
+						if firstTool.Name == "ask_question" {
+							type QuestionParam struct {
+								Question      string   `json:"question"`
+								Options       []string `json:"options"`
+								IsMultiSelect bool     `json:"is_multi_select"`
 							}
-						} else if firstTool.Name == "write_to_file" || firstTool.Name == "replace_file_content" || firstTool.Name == "multi_replace_file_content" {
-							var argsMap map[string]interface{}
-							if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
-								if fileVal, ok := argsMap["TargetFile"]; ok {
-									details["type"] = "edit"
-									details["fileName"] = fileVal
-								}
+							type AskQuestionArgs struct {
+								Questions []QuestionParam `json:"questions"`
 							}
-						}
-						detailsJSON, _ := json.Marshal(details)
+							var args AskQuestionArgs
+							if err := json.Unmarshal(firstTool.Args, &args); err == nil {
+								type UIOption struct {
+									Label string `json:"label"`
+								}
+								type UIQuestion struct {
+									Header   string     `json:"header"`
+									Question string     `json:"question"`
+									Type     string     `json:"type"`
+									Options  []UIOption `json:"options"`
+								}
+								type UIQuestionPayload struct {
+									Questions []UIQuestion `json:"questions"`
+								}
+								var uiPayload UIQuestionPayload
+								for _, q := range args.Questions {
+									qType := "text"
+									var uiOptions []UIOption
+									if len(q.Options) > 0 {
+										qType = "choice"
+										for _, opt := range q.Options {
+											uiOptions = append(uiOptions, UIOption{Label: opt})
+										}
+									}
+									uiPayload.Questions = append(uiPayload.Questions, UIQuestion{
+										Header:   "Question",
+										Question: q.Question,
+										Type:     qType,
+										Options:  uiOptions,
+									})
+								}
+								payloadJSON, _ := json.Marshal(uiPayload)
 
-						approvalPayload := Interaction{
-							Identifier:      data.ID + "-approval",
-							Message:         "Approval requested",
-							DetailedMessage: string(detailsJSON),
-							Title:           "ToolPermission",
-							Agent:           "antigravity",
-							Kind:            "approval",
-							Status:          "awaiting",
-							SessionID:       sessionID,
-							SessionPath:     sessionPath,
-							Quiet:           yolo, // Quiet in yolo mode
+								questionPayload := Interaction{
+									Identifier:      data.ID + "-question",
+									Message:         "Information requested",
+									DetailedMessage: string(payloadJSON),
+									Title:           "Question",
+									Agent:           "antigravity",
+									Kind:            "question",
+									Status:          "awaiting",
+									SessionID:       sessionID,
+									SessionPath:     sessionPath,
+									Quiet:           false, // Always show questions
+								}
+								send(questionPayload)
+								lastApprovalID = data.ID + "-question"
+							}
+						} else if !yolo {
+							// Create approval details JSON
+							details := map[string]interface{}{
+								"tool_name":  firstTool.Name,
+								"tool_input": firstTool.Args,
+							}
+							// If the tool is a command execution, map to standard type/command format
+							if firstTool.Name == "run_command" {
+								var argsMap map[string]interface{}
+								if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
+									if cmdVal, ok := argsMap["CommandLine"]; ok {
+										details["type"] = "exec"
+										details["command"] = cmdVal
+									}
+								}
+							} else if firstTool.Name == "write_to_file" || firstTool.Name == "replace_file_content" || firstTool.Name == "multi_replace_file_content" {
+								var argsMap map[string]interface{}
+								if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
+									if fileVal, ok := argsMap["TargetFile"]; ok {
+										details["type"] = "edit"
+										details["fileName"] = fileVal
+									}
+								}
+							}
+							detailsJSON, _ := json.Marshal(details)
+
+							approvalPayload := Interaction{
+								Identifier:      data.ID + "-approval",
+								Message:         "Approval requested",
+								DetailedMessage: string(detailsJSON),
+								Title:           "ToolPermission",
+								Agent:           "antigravity",
+								Kind:            "approval",
+								Status:          "awaiting",
+								SessionID:       sessionID,
+								SessionPath:     sessionPath,
+								Quiet:           yolo, // Quiet in yolo mode
+							}
+							send(approvalPayload)
+							lastApprovalID = data.ID + "-approval"
 						}
-						send(approvalPayload)
-						lastApprovalID = data.ID + "-approval"
 					}
 				}
 				lastProcessedMsgFinalized = isFinalized

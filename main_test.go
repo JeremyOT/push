@@ -1813,6 +1813,108 @@ func TestNormalizeArgs(t *testing.T) {
 	}
 }
 
+func TestAgyScraperQuestion(t *testing.T) {
+	// Create a temp file for the transcript
+	tmpFile, err := os.CreateTemp("", "transcript_question_*.jsonl")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Write mock transcript lines with ask_question tool call
+	lines := []string{
+		`{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-05-24T15:34:23Z","content":"<USER_REQUEST>\nTest Question\n</USER_REQUEST>"}`,
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:25Z","content":"Let me ask a question.","thinking":"Need more info","tool_calls":[{"name":"ask_question","args":{"questions":[{"question":"Which path?","options":["A","B"],"is_multi_select":false}]}}]}`,
+	}
+	for _, l := range lines {
+		if _, err := tmpFile.WriteString(l + "\n"); err != nil {
+			t.Fatalf("Failed to write to temp file: %v", err)
+		}
+	}
+	tmpFile.Sync()
+
+	received := make(chan Interaction, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/interactions" && r.Method == "POST" {
+			var i Interaction
+			if err := json.NewDecoder(r.Body).Decode(&i); err == nil {
+				received <- i
+			}
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	// Run scraper in background
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", false)
+
+	// Wait and verify messages
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var interactions []Interaction
+	expectedCount := 3 // User status (0), Model response (1), Question card (1-question)
+	for len(interactions) < expectedCount {
+		select {
+		case i := <-received:
+			interactions = append(interactions, i)
+		case <-ctx.Done():
+			t.Fatalf("Timeout waiting for interactions, got %d (expected %d)", len(interactions), expectedCount)
+		}
+	}
+
+	// Verify that the question card interaction was generated correctly
+	var questionCard *Interaction
+	for i := range interactions {
+		if interactions[i].Kind == "question" {
+			questionCard = &interactions[i]
+		}
+	}
+
+	if questionCard == nil {
+		t.Fatal("Failed to find generated question card")
+	}
+
+	if questionCard.Identifier != "1-question" {
+		t.Errorf("Expected identifier '1-question', got %s", questionCard.Identifier)
+	}
+
+	if questionCard.Title != "Question" {
+		t.Errorf("Expected title 'Question', got %s", questionCard.Title)
+	}
+
+	// Verify the detailed message JSON
+	var payload struct {
+		Questions []struct {
+			Header   string `json:"header"`
+			Question string `json:"question"`
+			Type     string `json:"type"`
+			Options  []struct {
+				Label string `json:"label"`
+			} `json:"options"`
+		} `json:"questions"`
+	}
+	if err := json.Unmarshal([]byte(questionCard.DetailedMessage), &payload); err != nil {
+		t.Fatalf("Failed to parse question card detailed message JSON: %v", err)
+	}
+
+	if len(payload.Questions) != 1 {
+		t.Fatalf("Expected 1 question, got %d", len(payload.Questions))
+	}
+
+	q := payload.Questions[0]
+	if q.Question != "Which path?" {
+		t.Errorf("Expected question 'Which path?', got %s", q.Question)
+	}
+	if q.Type != "choice" {
+		t.Errorf("Expected type 'choice', got %s", q.Type)
+	}
+	if len(q.Options) != 2 || q.Options[0].Label != "A" || q.Options[1].Label != "B" {
+		t.Errorf("Expected options A and B, got options: %v", q.Options)
+	}
+}
+
+
 
 
 
