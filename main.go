@@ -1657,6 +1657,20 @@ func handleRenameSession(db *sql.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		sessionsMu.Lock()
+		if count, exists := activeSessions[oldID]; exists {
+			activeSessions[newID] += count
+			delete(activeSessions, oldID)
+		}
+		sessionsMu.Unlock()
+
+		broadcaster.Broadcast(Interaction{
+			Title:     "session-rename",
+			Message:   oldID,
+			SessionID: newID,
+		})
+
 		w.WriteHeader(http.StatusOK)
 	}
 }

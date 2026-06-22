@@ -1741,6 +1741,18 @@ func TestRenameSession(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	defer db.Close()
 
+	// Setup active session
+	sessionsMu.Lock()
+	activeSessions["old-session-123"] = 1
+	sessionsMu.Unlock()
+
+	defer func() {
+		sessionsMu.Lock()
+		delete(activeSessions, "old-session-123")
+		delete(activeSessions, "new-session-456")
+		sessionsMu.Unlock()
+	}()
+
 	// Insert test interaction
 	interaction := Interaction{
 		Message:   "Hello Rename",
@@ -1750,6 +1762,10 @@ func TestRenameSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to save interaction: %v", err)
 	}
+
+	// Subscribe to the broadcaster
+	ch := broadcaster.Subscribe()
+	defer broadcaster.Unsubscribe(ch)
 
 	handler := handleRenameSession(db)
 
@@ -1768,6 +1784,34 @@ func TestRenameSession(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	// Verify broadcaster received rename message
+	select {
+	case msg := <-ch:
+		if msg.Title != "session-rename" {
+			t.Errorf("Expected broadcast title 'session-rename', got '%s'", msg.Title)
+		}
+		if msg.Message != "old-session-123" {
+			t.Errorf("Expected broadcast message 'old-session-123', got '%s'", msg.Message)
+		}
+		if msg.SessionID != "new-session-456" {
+			t.Errorf("Expected broadcast session_id 'new-session-456', got '%s'", msg.SessionID)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Errorf("Timed out waiting for rename broadcast message")
+	}
+
+	// Verify activeSessions was updated
+	sessionsMu.Lock()
+	oldVal := activeSessions["old-session-123"]
+	newVal := activeSessions["new-session-456"]
+	sessionsMu.Unlock()
+	if oldVal != 0 {
+		t.Errorf("Expected old-session-123 to be removed from activeSessions, got count %d", oldVal)
+	}
+	if newVal != 1 {
+		t.Errorf("Expected new-session-456 to have count 1 in activeSessions, got %d", newVal)
 	}
 
 	// Verify database was updated

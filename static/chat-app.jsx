@@ -143,6 +143,54 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     const sid = mapped.sessionId;
     const msgTs = msg.timestamp ? (typeof msg.timestamp === 'string' ? new Date(msg.timestamp).getTime() : msg.timestamp) : Date.now();
     
+    // Handle session renaming
+    if (msg.title === 'session-rename') {
+        const oldID = msg.message;
+        const newID = msg.session_id;
+
+        setMessages(prev => prev.map(m => {
+            if (m.sessionId === oldID) {
+                return { ...m, sessionId: newID };
+            }
+            return m;
+        }));
+
+        setThreads(prev => {
+            let next = [...prev];
+            const idx = next.findIndex(t => t.id === oldID);
+            if (idx !== -1) {
+                const newIdx = next.findIndex(t => t.id === newID);
+                if (newIdx !== -1) {
+                    next[newIdx] = {
+                        ...next[idx],
+                        ...next[newIdx],
+                        id: newID,
+                        sessionId: newID,
+                        active: true
+                    };
+                    next.splice(idx, 1);
+                } else {
+                    next[idx] = {
+                        ...next[idx],
+                        id: newID,
+                        sessionId: newID
+                    };
+                }
+                return next;
+            }
+            return prev;
+        });
+
+        setActiveId(currentId => {
+            if (currentId === oldID) {
+                localStorage.setItem('push_active_id', newID);
+                return newID;
+            }
+            return currentId;
+        });
+        return;
+    }
+
     // Handle heartbeats separately as they don't add to the message list
     if (msg.title === 'heartbeat' && msg.message !== undefined) {
         const activeIds = (msg.message ? msg.message.split(',') : []).map(id => id.trim()).filter(id => id && id !== 't1');
