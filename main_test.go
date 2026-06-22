@@ -1534,6 +1534,12 @@ func TestGeminiAgentScriptCleanup(t *testing.T) {
 	if !strings.Contains(geminiAgentScript, "kill \"$PID\"") {
 		t.Error("gemini-agent script does not kill the PID from PUSH_PID_FILE during cleanup")
 	}
+	if !strings.Contains(geminiAgentScript, "$count -lt 10") {
+		t.Error("gemini-agent script does not limit process wait loops to prevent hangs")
+	}
+	if !strings.Contains(geminiAgentScript, "kill -9") {
+		t.Error("gemini-agent script does not fall back to SIGKILL for stuck processes")
+	}
 }
 
 func TestAgySessionIsolation(t *testing.T) {

@@ -62,23 +62,44 @@ PUSH_PID_FILE="/tmp/push-client-$$.pid"
 AGY_LOG=""
 
 cleanup() {
+    if [ -n "$SCRAPER_PID" ]; then
+        kill "$SCRAPER_PID" 2>/dev/null
+        local count=0
+        while kill -0 "$SCRAPER_PID" 2>/dev/null && [ $count -lt 10 ]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
+        if kill -0 "$SCRAPER_PID" 2>/dev/null; then
+            kill -9 "$SCRAPER_PID" 2>/dev/null
+        fi
+        wait "$SCRAPER_PID" 2>/dev/null
+        SCRAPER_PID=""
+    fi
     if [ -n "$PUSH_PID_FILE" ] && [ -f "$PUSH_PID_FILE" ]; then
         PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
         if [ -n "$PID" ]; then
             kill "$PID" 2>/dev/null
-            while kill -0 "$PID" 2>/dev/null; do
+            local count=0
+            while kill -0 "$PID" 2>/dev/null && [ $count -lt 10 ]; do
                 sleep 0.1
+                count=$((count + 1))
             done
+            if kill -0 "$PID" 2>/dev/null; then
+                kill -9 "$PID" 2>/dev/null
+            fi
         fi
         rm -f "$PUSH_PID_FILE"
     fi
-    if [ -n "$SCRAPER_PID" ]; then
-        kill "$SCRAPER_PID" 2>/dev/null
-        wait "$SCRAPER_PID" 2>/dev/null
-        SCRAPER_PID=""
-    fi
     if [ -n "$PUSH_PID" ]; then
         kill "$PUSH_PID" 2>/dev/null
+        local count=0
+        while kill -0 "$PUSH_PID" 2>/dev/null && [ $count -lt 10 ]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
+        if kill -0 "$PUSH_PID" 2>/dev/null; then
+            kill -9 "$PUSH_PID" 2>/dev/null
+        fi
         wait "$PUSH_PID" 2>/dev/null
         PUSH_PID=""
     fi
@@ -183,9 +204,14 @@ while true; do
                 PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
                 if [ -n "$PID" ]; then
                     kill "$PID" 2>/dev/null
-                    while kill -0 "$PID" 2>/dev/null; do
+                    local count=0
+                    while kill -0 "$PID" 2>/dev/null && [ $count -lt 10 ]; do
                         sleep 0.1
+                        count=$((count + 1))
                     done
+                    if kill -0 "$PID" 2>/dev/null; then
+                        kill -9 "$PID" 2>/dev/null
+                    fi
                 fi
                 rm -f "$PUSH_PID_FILE"
 
