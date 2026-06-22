@@ -1525,6 +1525,15 @@ func TestGeminiAgentScriptCleanup(t *testing.T) {
 	if !strings.Contains(geminiAgentScript, "kill \"$PUSH_PID\"") && !strings.Contains(geminiAgentScript, "kill $PUSH_PID") {
 		t.Error("gemini-agent script does not kill PUSH_PID during cleanup")
 	}
+	if !strings.Contains(geminiAgentScript, "PUSH_PID_FILE=\"/tmp/push-client-$$.pid\"") {
+		t.Error("gemini-agent script does not initialize PUSH_PID_FILE using parent shell PID ($$)")
+	}
+	if !strings.Contains(geminiAgentScript, "PID=$(cat \"$PUSH_PID_FILE\" 2>/dev/null)") {
+		t.Error("gemini-agent script does not read PID from PUSH_PID_FILE during cleanup")
+	}
+	if !strings.Contains(geminiAgentScript, "kill \"$PID\"") {
+		t.Error("gemini-agent script does not kill the PID from PUSH_PID_FILE during cleanup")
+	}
 }
 
 func TestAgySessionIsolation(t *testing.T) {

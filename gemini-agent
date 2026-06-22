@@ -58,7 +58,7 @@ rm -f "$RESTART_FILE"
 # Keep track of background processes for cleanup
 SCRAPER_PID=""
 PUSH_PID=""
-PUSH_PID_FILE=""
+PUSH_PID_FILE="/tmp/push-client-$$.pid"
 AGY_LOG=""
 
 cleanup() {
@@ -66,7 +66,9 @@ cleanup() {
         PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
         if [ -n "$PID" ]; then
             kill "$PID" 2>/dev/null
-            wait "$PID" 2>/dev/null
+            while kill -0 "$PID" 2>/dev/null; do
+                sleep 0.1
+            done
         fi
         rm -f "$PUSH_PID_FILE"
     fi
@@ -132,12 +134,6 @@ while true; do
             --model "$AGENT_CMD" \
             --tmux-target "$TMUX_TARGET" &
         if [ "$AGENT_CMD" = "agy" ]; then
-            # We need to temporarily set AGY_LOG for the filename check in PUSH_PID_FILE
-            UUID_TEMP=$(uuidgen 2>/dev/null)
-            if [ -z "$UUID_TEMP" ]; then
-                UUID_TEMP=$(python3 -c "import uuid; print(uuid.uuid4())")
-            fi
-            PUSH_PID_FILE="/tmp/push-client-$UUID_TEMP.pid"
             echo $! > "$PUSH_PID_FILE"
         else
             PUSH_PID=$!
@@ -155,9 +151,6 @@ while true; do
         AGY_LOG="/tmp/agy-$UUID.log"
         touch "$AGY_LOG"
         
-        # Keep track of the original startup push client if we started it
-        STARTUP_PUSH_PID_FILE="$PUSH_PID_FILE"
-
         # Start a discovery background process
         (
             CONV_ID=""
@@ -182,27 +175,19 @@ while true; do
                     --session-path "$SESSION_PATH" \
                     --model "$AGENT_CMD" \
                     --tmux-target "$TMUX_TARGET" &
-                # Store the PID globally in the new temp file path (which the parent clean up script will read)
-                PUSH_PID_FILE_NEW="/tmp/push-client-$CONV_ID.pid"
-                echo $! > "$PUSH_PID_FILE_NEW"
-                
-                # Make sure the parent trap sees this new file
-                # Since we are in a subshell, we cannot update PUSH_PID_FILE in parent shell directly,
-                # but we can write the new PID path to a known location, or we can rename the pid file.
-                mv "$STARTUP_PUSH_PID_FILE" "$PUSH_PID_FILE_NEW" 2>/dev/null
-                echo $! > "$PUSH_PID_FILE_NEW"
+                echo $! > "$PUSH_PID_FILE"
             else
                 echo "Started session: $CONV_ID"
                 
                 # Kill the old startup push client first to allow its exit status to be sent before renaming
-                PID=$(cat "$STARTUP_PUSH_PID_FILE" 2>/dev/null)
+                PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
                 if [ -n "$PID" ]; then
                     kill "$PID" 2>/dev/null
                     while kill -0 "$PID" 2>/dev/null; do
                         sleep 0.1
                     done
                 fi
-                rm -f "$STARTUP_PUSH_PID_FILE"
+                rm -f "$PUSH_PID_FILE"
 
                 # Rename the session ID in the database from the temporary UUID to the conversation ID
                 curl -s -X POST "http://${PUSH_ADDRESS:-127.0.0.1:8089}/rename-session?old=$SESSION_ID&new=$CONV_ID" >/dev/null
@@ -214,9 +199,7 @@ while true; do
                     --session-path "$SESSION_PATH" \
                     --model "$AGENT_CMD" \
                     --tmux-target "$TMUX_TARGET" &
-                
-                PUSH_PID_FILE_NEW="/tmp/push-client-$CONV_ID.pid"
-                echo $! > "$PUSH_PID_FILE_NEW"
+                echo $! > "$PUSH_PID_FILE"
             fi
 
             LOG_FILE="$APP_DATA_DIR/brain/$CONV_ID/.system_generated/logs/transcript_full.jsonl"
