@@ -179,6 +179,10 @@ func main() {
 		go func() {
 			<-sigChan
 			cancel()
+			select {
+			case <-time.After(1 * time.Second):
+				os.Exit(0)
+			}
 		}()
 		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, *yoloAgent, os.Stdin, os.Stdout, os.Stderr)
 		return
@@ -1023,11 +1027,21 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				sendMsg(msg, title, agent, "")
 			}
 
+			bodyDone := make(chan struct{})
+			go func() {
+				select {
+				case <-ctx.Done():
+					resp.Body.Close()
+				case <-bodyDone:
+				}
+			}()
+
 			dec := json.NewDecoder(resp.Body)
 			for {
 				var i Interaction
 				if err := dec.Decode(&i); err != nil {
 					resp.Body.Close()
+					close(bodyDone)
 					if ctx.Err() != nil {
 						return
 					}
