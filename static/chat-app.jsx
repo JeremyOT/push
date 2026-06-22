@@ -24,7 +24,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const agent = AGENTS[thread.agent];
 
   // Typing indicator derived from thread status
-  const isTyping = thread.id !== 't1' && !['ready', 'idle', 'passive'].includes(thread.status);
+  const isTyping = thread.id !== 't1' && !['ready', 'idle', 'passive', 'done'].includes(thread.status);
   const typingAgent = isTyping ? thread.agent : null;
 
   const scrollRef = React.useRef(null);

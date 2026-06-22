@@ -194,16 +194,18 @@ while true; do
             else
                 echo "Started session: $CONV_ID"
                 
-                # Rename the session ID in the database from the temporary UUID to the conversation ID
-                curl -s -X POST "http://${PUSH_ADDRESS:-127.0.0.1:8089}/rename-session?old=$SESSION_ID&new=$CONV_ID" >/dev/null
-
-                # Kill the old startup push client
+                # Kill the old startup push client first to allow its exit status to be sent before renaming
                 PID=$(cat "$STARTUP_PUSH_PID_FILE" 2>/dev/null)
                 if [ -n "$PID" ]; then
                     kill "$PID" 2>/dev/null
-                    wait "$PID" 2>/dev/null
+                    while kill -0 "$PID" 2>/dev/null; do
+                        sleep 0.1
+                    done
                 fi
                 rm -f "$STARTUP_PUSH_PID_FILE"
+
+                # Rename the session ID in the database from the temporary UUID to the conversation ID
+                curl -s -X POST "http://${PUSH_ADDRESS:-127.0.0.1:8089}/rename-session?old=$SESSION_ID&new=$CONV_ID" >/dev/null
 
                 # Start the new push client with the correct conversation ID
                 $PUSH_CMD --cli-service tmux \

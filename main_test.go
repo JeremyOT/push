@@ -1056,6 +1056,21 @@ func TestRunCliClientMetadata(t *testing.T) {
 	if !strings.Contains(reg.Message, "Special Session") {
 		t.Errorf("Expected message to contain 'Special Session', got %s", reg.Message)
 	}
+	if reg.Status != "r" {
+		t.Errorf("Expected registration status 'r', got %q", reg.Status)
+	}
+
+	// Verify all registration messages have status "r"
+	rows, err := db.Query("SELECT status FROM interactions WHERE title = 'session-register'")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var status string
+			if err := rows.Scan(&status); err == nil && status != "r" {
+				t.Errorf("Expected all registration messages to have status 'r', got %q", status)
+			}
+		}
+	}
 
 	// Test Antigravity detection
 	ctx2, cancel2 := context.WithCancel(context.Background())
@@ -1911,6 +1926,76 @@ func TestAgyScraperQuestion(t *testing.T) {
 	}
 	if len(q.Options) != 2 || q.Options[0].Label != "A" || q.Options[1].Label != "B" {
 		t.Errorf("Expected options A and B, got options: %v", q.Options)
+	}
+}
+
+func TestRunCliClientTmuxAgent(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/service", handleService(db))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	addr := server.Listener.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stdinReader := strings.NewReader("")
+	var stdout, stderr bytes.Buffer
+
+	// Start in tmux mode, targeting a pane, specifying model 'agy'
+	go runCliClient(ctx, addr, "tmux", "test:0.0", "sess-tmux-123", "Tmux Agy Session", "/tmp", "agy", false, stdinReader, &stdout, &stderr)
+
+	// Wait for the client to register and send forwarding message
+	time.Sleep(300 * time.Millisecond)
+
+	// Kill the client (which should trigger exit message)
+	cancel()
+	time.Sleep(200 * time.Millisecond)
+
+	// Verify messages in DB
+	rows, err := db.Query("SELECT title, agent, message FROM interactions WHERE session_id = 'sess-tmux-123'")
+	if err != nil {
+		t.Fatalf("Failed to query interactions: %v", err)
+	}
+	defer rows.Close()
+
+	var hasReg, hasForward, hasExit bool
+	for rows.Next() {
+		var title, agent, message string
+		if err := rows.Scan(&title, &agent, &message); err != nil {
+			t.Fatalf("Failed to scan row: %v", err)
+		}
+		if title == "session-register" {
+			hasReg = true
+			if agent != "antigravity" {
+				t.Errorf("Expected registration agent to be 'antigravity', got %q", agent)
+			}
+		} else if strings.Contains(message, "Now forwarding responses") {
+			hasForward = true
+			if agent != "antigravity" {
+				t.Errorf("Expected forwarding message agent to be 'antigravity', got %q", agent)
+			}
+		} else if strings.Contains(message, "No longer forwarding responses") {
+			hasExit = true
+			if agent != "antigravity" {
+				t.Errorf("Expected exit message agent to be 'antigravity', got %q", agent)
+			}
+		}
+	}
+
+	if !hasReg {
+		t.Error("Missing session-register message")
+	}
+	if !hasForward {
+		t.Error("Missing 'Now forwarding responses' message")
+	}
+	if !hasExit {
+		t.Error("Missing 'No longer forwarding responses' message")
 	}
 }
 

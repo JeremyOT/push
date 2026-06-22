@@ -919,6 +919,9 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 		title = "CLI Agent"
 	}
 	agent := "remote"
+	if mode == "tmux" {
+		agent = "tmux"
+	}
 	if model != "" {
 		if strings.Contains(strings.ToLower(model), "gemini") {
 			agent = "gemini"
@@ -947,7 +950,7 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 			if clientID != "" {
 				exitMsg += fmt.Sprintf(" (Client ID: %s)", clientID)
 			}
-			sendMsg(exitMsg, title, "tmux", "")
+			sendMsg(exitMsg, title, agent, "")
 			time.Sleep(100 * time.Millisecond) // Give the exit message a moment
 		}()
 	}
@@ -1010,14 +1013,14 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 
 			// Re-register session and active services on successful connection
 			if sessionID != "" {
-				sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "d")
+				sendMsg(fmt.Sprintf("Registered session: %s", title), "session-register", agent, "r")
 			}
 			if mode == "tmux" {
 				msg := fmt.Sprintf("[%s] Now forwarding responses to %s", title, tmuxTarget)
 				if clientID != "" {
 					msg += fmt.Sprintf(" (Client ID: %s)", clientID)
 				}
-				sendMsg(msg, title, "tmux", "")
+				sendMsg(msg, title, agent, "")
 			}
 
 			dec := json.NewDecoder(resp.Body)

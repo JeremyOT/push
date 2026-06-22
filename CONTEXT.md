@@ -103,12 +103,5 @@ go build -ldflags="-w -s" -o push main.go
 - Enhanced link styling and readability in the chat UI: added a `link` color token to theme configurations (#58a6ff for dark mode and #0969da for light mode) and styled `.markdown-body a` elements accordingly, eliminating low-contrast default blue links on dark backgrounds.
 - Modernized the application color palettes in `static/chat-theme.jsx`, transitioning dark mode to a premium deep slate-navy theme (#0b0f19 background, #111420 panels, and #171c2c hover states) with modern indigo accents (#6366f1/#4f46e5). Refined scrollbars to be thinner and translucent, and updated inline code / pre block container styles with cleaner backgrounds and borders.
 - Added support for parsing `ask_question` tool calls in `main.go`, mapping them to UI-native question cards (interactive choice/options blocks) so users can answer agent queries directly from the Web UI. Added the `TestAgyScraperQuestion` unit test.
-
-
-
-
-
-
-
-
-
+- Fixed an issue where Antigravity sessions registered with a Tmux icon initially and after server restarts, and where the temporary session ID registration caused duplicate sidebar listings. Specifically, updated `main.go`'s `runCliClient` to use the dynamically resolved `agent` instead of the hardcoded `"tmux"` when sending forwarding and status messages, and modified `gemini-agent` to kill the startup push client and wait for its exit status message to finish before triggering the `/rename-session` database update. Added the `TestRunCliClientTmuxAgent` unit test.
+- Fixed an issue where the Antigravity session initialized in a "busy" state and stayed locked in the UI until the user hit "stop". Specifically, updated the CLI client registration status on reconnect in `main.go` from `"d"` (done) to `"r"` (ready), and updated the frontend `isTyping` condition in `static/chat-app.jsx` to treat the `'done'` status as a non-typing/ready state so that completed agent states do not block the composer. Added assertions in `TestRunCliClientMetadata` to verify the registration status.
