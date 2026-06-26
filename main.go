@@ -709,7 +709,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			if !i.Replace {
 				i.Message = mergeStrings(existingMessage, i.Message)
 
-				if i.Kind == "approval" || existingKind == "approval" || strings.Contains(i.Title, "ToolPermission") {
+				if i.Kind == "approval" || existingKind == "approval" || i.Kind == "question" || existingKind == "question" || strings.Contains(i.Title, "ToolPermission") {
 					if i.DetailedMessage == "" {
 						i.DetailedMessage = existingDetailedMessage
 					}
@@ -2327,6 +2327,17 @@ func parsePaneQuestion(paneContent string) (string, []string, bool) {
 	}
 
 	if navIdx == -1 {
+		return "", nil, false
+	}
+
+	// Ensure the navigation prompt is at the bottom of the visible terminal output
+	nonEmptyBelow := 0
+	for i := navIdx + 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) != "" {
+			nonEmptyBelow++
+		}
+	}
+	if nonEmptyBelow > 3 {
 		return "", nil, false
 	}
 
