@@ -63,6 +63,7 @@ AGY_LOG=""
 
 cleanup() {
     if [ -n "$SCRAPER_PID" ]; then
+        disown "$SCRAPER_PID" 2>/dev/null
         kill "$SCRAPER_PID" 2>/dev/null
         local count=0
         while kill -0 "$SCRAPER_PID" 2>/dev/null && [ $count -lt 10 ]; do
@@ -78,6 +79,7 @@ cleanup() {
     if [ -n "$PUSH_PID_FILE" ] && [ -f "$PUSH_PID_FILE" ]; then
         PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
         if [ -n "$PID" ]; then
+            disown "$PID" 2>/dev/null
             kill "$PID" 2>/dev/null
             local count=0
             while kill -0 "$PID" 2>/dev/null && [ $count -lt 10 ]; do
@@ -91,6 +93,7 @@ cleanup() {
         rm -f "$PUSH_PID_FILE"
     fi
     if [ -n "$PUSH_PID" ]; then
+        disown "$PUSH_PID" 2>/dev/null
         kill "$PUSH_PID" 2>/dev/null
         local count=0
         while kill -0 "$PUSH_PID" 2>/dev/null && [ $count -lt 10 ]; do

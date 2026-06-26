@@ -945,7 +945,9 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 		if err == nil {
 			resp.Body.Close()
 		} else {
-			fmt.Fprintf(stderr, "\rFailed to notify service: %v\n", err)
+			if ctx.Err() == nil && mode != "tmux" {
+				fmt.Fprintf(stderr, "\rFailed to notify service: %v\n", err)
+			}
 		}
 	}
 
@@ -997,7 +999,9 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				if ctx.Err() != nil {
 					return
 				}
-				fmt.Fprintf(stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
+				if ctx.Err() == nil && mode != "tmux" {
+					fmt.Fprintf(stderr, "\rConnection failed: %v. Retrying in %v...\n", err, backoff)
+				}
 				if needsPrompt {
 					fmt.Fprint(stdout, "> ")
 				}
@@ -1046,10 +1050,12 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 					if ctx.Err() != nil {
 						return
 					}
-					if err == io.EOF {
-						fmt.Fprintf(stderr, "\rConnection closed by server. Reconnecting...\n")
-					} else {
-						fmt.Fprintf(stderr, "\rStream error: %v. Reconnecting...\n", err)
+					if ctx.Err() == nil && mode != "tmux" {
+						if err == io.EOF {
+							fmt.Fprintf(stderr, "\rConnection closed by server. Reconnecting...\n")
+						} else {
+							fmt.Fprintf(stderr, "\rStream error: %v. Reconnecting...\n", err)
+						}
 					}
 					if needsPrompt {
 						fmt.Fprint(stdout, "> ")
@@ -1273,7 +1279,9 @@ loop:
 			if err == nil {
 				resp.Body.Close()
 			} else {
-				fmt.Fprintf(stderr, "\rSend error: %v\n", err)
+				if ctx.Err() == nil && mode != "tmux" {
+					fmt.Fprintf(stderr, "\rSend error: %v\n", err)
+				}
 			}
 
 			if needsPrompt {
