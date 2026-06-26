@@ -2295,14 +2295,31 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 	}
 }
 
+func isSeparator(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "───") || strings.HasPrefix(trimmed, "---") {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "●") || strings.HasPrefix(trimmed, "▸") {
+		return true
+	}
+	if strings.Contains(trimmed, "(ctrl+o to expand)") || strings.Contains(line, "»") {
+		return true
+	}
+	return false
+}
+
 func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 	lines := strings.Split(paneContent, "\n")
 	// Find the last line that looks like a navigation prompt:
-	// "Navigate" and "Select" and "Skip"
+	// We check for "Navigate" which is the common term in terminal prompts (e.g. "Navigate", "Select", "Skip" or just "Navigate").
 	navIdx := -1
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := lines[i]
-		if strings.Contains(line, "Navigate") && strings.Contains(line, "Select") && strings.Contains(line, "Skip") {
+		if strings.Contains(line, "Navigate") {
 			navIdx = i
 			break
 		}
@@ -2330,9 +2347,23 @@ func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 	for i := navIdx - 1; i >= 0; i-- {
 		line := lines[i]
 		trimmed := strings.TrimSpace(line)
+		if isSeparator(line) {
+			break
+		}
 		if trimmed == "" {
 			if foundOptions && len(qLines) > 0 {
-				break
+				// Check if the next non-empty line is a separator or if we reached the top
+				nextNonEmpty := ""
+				for j := i - 1; j >= 0; j-- {
+					t := strings.TrimSpace(lines[j])
+					if t != "" {
+						nextNonEmpty = lines[j]
+						break
+					}
+				}
+				if nextNonEmpty == "" || isSeparator(nextNonEmpty) {
+					break
+				}
 			}
 			continue
 		}
@@ -2360,9 +2391,16 @@ func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 		question := strings.Join(qLines, "\n")
 		isToolPermission := false
 		for _, opt := range options {
-			if strings.Contains(strings.ToLower(opt), "permission") {
+			optLower := strings.ToLower(opt)
+			if strings.Contains(optLower, "permission") || strings.Contains(optLower, "allow access") || strings.Contains(optLower, "deny access") {
 				isToolPermission = true
 				break
+			}
+		}
+		if !isToolPermission {
+			qLower := strings.ToLower(question)
+			if strings.Contains(qLower, "allow access") || strings.Contains(qLower, "file access") || strings.Contains(qLower, "command execution") || (strings.Contains(qLower, "action:") && strings.Contains(qLower, "reason:")) {
+				isToolPermission = true
 			}
 		}
 		return question, options, true, isToolPermission

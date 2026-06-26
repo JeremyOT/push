@@ -2166,6 +2166,51 @@ Reason: Commit changes to Git
 	}
 }
 
+func TestParsePaneToolPermissionNewFormat(t *testing.T) {
+	paneContent := `File access
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Read: /Users/jeremyot/dev/push/.git/config
+  Reason: outside workspace
+
+Allow access to this file?
+> 1. Yes, allow access
+  2. Yes, and always allow non-workspace access
+  3. No, deny access
+
+  ↑/↓ Navigate
+esc to cancel
+`
+	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
+	if !ok {
+		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
+	}
+	if !isToolPermission {
+		t.Errorf("Expected isToolPermission to be true, got false")
+	}
+
+	expectedQuestion := "Read: /Users/jeremyot/dev/push/.git/config\nReason: outside workspace\nAllow access to this file?"
+	if question != expectedQuestion {
+		t.Errorf("Expected question:\n%q\nGot:\n%q", expectedQuestion, question)
+	}
+
+	expectedOptions := []string{
+		"Yes, allow access",
+		"Yes, and always allow non-workspace access",
+		"No, deny access",
+	}
+	if len(options) != len(expectedOptions) {
+		t.Fatalf("Expected %d options, got %d", len(expectedOptions), len(options))
+	}
+
+	for i, opt := range options {
+		if opt != expectedOptions[i] {
+			t.Errorf("Option %d: expected %q, got %q", i, expectedOptions[i], opt)
+		}
+	}
+}
+
+
 
 func TestRunCliClientTmuxChoice(t *testing.T) {
 	db, tempDir := setupTestDB(t)
