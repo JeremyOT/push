@@ -13,6 +13,12 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [decisions, setDecisions] = React.useState({});
   const [messages, setMessages] = React.useState([]);
   const [toast, setToast] = React.useState(null);
+  const [pendingWriteIn, setPendingWriteIn] = React.useState(null);
+  const pendingWriteInRef = React.useRef(null);
+  const updatePendingWriteIn = (val) => {
+    setPendingWriteIn(val);
+    pendingWriteInRef.current = val;
+  };
   const isPhone = mode === 'phone';
 
   const showToast = (message) => {
@@ -456,6 +462,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const handleSend = async (text, kind) => {
     if (!config.interactive) return;
     
+    if (pendingWriteInRef.current) {
+        const { decision, msgId } = pendingWriteInRef.current;
+        updatePendingWriteIn(null);
+        setDecisions((d) => ({ ...d, [msgId]: decision }));
+        handleSend(decision, 'choice');
+        setTimeout(() => {
+            handleSend(text);
+        }, 500);
+        return;
+    }
+    
     if (text.startsWith('/push register')) {
         const success = await window.registerPush?.();
         if (success) {
@@ -497,6 +514,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
   const handleDecide = (msgId, decision) => {
     setDecisions((d) => ({ ...d, [msgId]: decision }));
+    updatePendingWriteIn(null);
     
     const msg = messages.find(m => m.id === msgId);
     const isApproval = msg && msg.kind === 'approval';
@@ -524,28 +542,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (optIdx >= 0 && optIdx < q.options.length) {
                 const opt = q.options[optIdx];
                 const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
-                const lowerLabel = optLabel.toLowerCase();
                 const isLast = optIdx === q.options.length - 1;
-                const isWriteIn = isLast && (
-                    lowerLabel.includes('write') || 
-                    lowerLabel.includes('custom') || 
-                    lowerLabel.includes('other') ||
-                    lowerLabel.includes('input')
-                );
-                if (isWriteIn || lowerLabel.includes('write-in') || lowerLabel.includes('write in')) {
-                    const userInput = prompt("Enter your write-in response:");
-                    if (userInput === null) {
-                        setDecisions((d) => {
-                            const next = { ...d };
-                            delete next[msgId];
-                            return next;
-                        });
-                        return;
-                    }
-                    handleSend(decision, 'choice');
-                    setTimeout(() => {
-                        handleSend(userInput);
-                    }, 500);
+                const isExactWriteIn = isLast && optLabel === 'Write-in...';
+                if (isExactWriteIn) {
+                    updatePendingWriteIn({
+                        msgId: msgId,
+                        decision: decision
+                    });
+                    setComposerValue('');
                     return;
                 }
             }
@@ -764,7 +768,8 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             onStop={handleStop}
             onOpenPalette={() => setPaletteOpen(true)}
             agentColor={agent.color}
-            isWorking={isTyping}
+            isWorking={isTyping && !pendingWriteIn}
+            placeholder={pendingWriteIn ? "Type your write-in response..." : undefined}
           />
         )}
       </div>

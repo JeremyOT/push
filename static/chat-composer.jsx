@@ -45,7 +45,7 @@ function ChatHeader({ theme, thread, onMenu, isPhone, solo = false }) {
   );
 }
 
-function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, isWorking, onStop }) {
+function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, isWorking, onStop, placeholder }) {
   const taRef = React.useRef(null);
   React.useEffect(() => {
     const ta = taRef.current;
@@ -95,7 +95,7 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
             }
           }}
           rows={1}
-          placeholder={isWorking ? "Agent is working…" : "Send a message, or / for commands…"}
+          placeholder={placeholder || (isWorking ? "Agent is working…" : "Send a message, or / for commands…")}
           style={{
             all: 'unset', flex: 1, minWidth: 0,
             fontFamily: FONT_SANS, fontSize: 14, lineHeight: 1.45,
