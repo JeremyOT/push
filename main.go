@@ -646,6 +646,15 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 }
 
 func saveInteraction(db *sql.DB, i *Interaction) error {
+	if i.Kind == "status" && i.Status == "r" && i.SessionID != "" {
+		var lastStatus string
+		var lastKind string
+		err := db.QueryRow("SELECT status, kind FROM interactions WHERE session_id = ? ORDER BY id DESC LIMIT 1", i.SessionID).Scan(&lastStatus, &lastKind)
+		if err == nil && lastStatus == "r" && lastKind == "status" {
+			return nil
+		}
+	}
+
 	var existingQuiet bool
 	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Antigravity" || i.Title == "Remote" || i.Title == "CLI Agent") {
 		fillMissingMetadata(db, i)
@@ -1813,6 +1822,7 @@ func runGeminiAgent(args []string, address string) {
 }
 
 func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, tmuxTarget string, yolo bool) {
+	catchingUp := true
 
 	var currentLogFile string
 	var fileHandle *os.File
@@ -1856,6 +1866,9 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 	}
 
 	send := func(payload Interaction) {
+		if catchingUp {
+			payload.Quiet = true
+		}
 		data, _ := json.Marshal(payload)
 		resp, err := http.Post(backendURL+"/interactions", "application/json", bytes.NewReader(data))
 		if err == nil {
@@ -1889,6 +1902,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 
 			seenMessages = make(map[string]string)
 			lastProcessedMsgFinalized = false
+			catchingUp = true
 		}
 
 		if reader == nil {
@@ -2163,6 +2177,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 
 		if err != nil {
 			if err == io.EOF {
+				catchingUp = false
 				// Check for truncation
 				if info, err := os.Stat(currentLogFile); err == nil {
 					pos, _ := fileHandle.Seek(0, io.SeekCurrent)

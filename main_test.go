@@ -1397,22 +1397,34 @@ func TestAgyScraper(t *testing.T) {
 	for _, m := range firstBatch {
 		if m.Identifier == "0" && m.IsUser && m.Kind == "status" && m.Message == "Hello Scraper" {
 			userMsgFound = true
+			if !m.Quiet {
+				t.Error("Expected initial catch-up user message to be quiet")
+			}
 		}
 		if m.Identifier == "1" && !m.IsUser && m.Kind == "agent" && m.Status == "w" {
 			modelMsgFound = true
+			if !m.Quiet {
+				t.Error("Expected initial catch-up model message to be quiet")
+			}
 		}
 		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "awaiting" {
 			approvalCardFound = true
+			if !m.Quiet {
+				t.Error("Expected initial catch-up approval card to be quiet")
+			}
 		}
 	}
 	if !userMsgFound || !modelMsgFound || !approvalCardFound {
 		t.Errorf("Missing expected messages in first batch. User:%v, Model:%v, Approval:%v", userMsgFound, modelMsgFound, approvalCardFound)
 	}
 
+	// Wait for the scraper to hit EOF and exit catch-up mode
+	time.Sleep(200 * time.Millisecond)
+
 	// Append more lines to simulate agent progress
 	moreLines := []string{
 		`{"step_index":2,"source":"MODEL","type":"RUN_COMMAND","status":"DONE","created_at":"2026-05-24T15:34:26Z","content":"main.go\nmain_test.go"}`,
-		`{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:27Z","content":"I have listed the files."}`,
+		`{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-05-24T15:34:27Z","content":"I want to run another command.","thinking":"Let us do another step","tool_calls":[{"name":"run_command","args":{"CommandLine":"cat main.go"}}]}`,
 	}
 	for _, l := range moreLines {
 		if _, err := tmpFile.WriteString(l + "\n"); err != nil {
@@ -1423,7 +1435,7 @@ func TestAgyScraper(t *testing.T) {
 
 	// Wait and verify second batch of messages
 	var secondBatch []Interaction
-	expectedCount2 := 4 // Resolve approval (1-approval), Tool output (2), Final model response (3), and Ready status transition (r)
+	expectedCount2 := 4 // Resolve approval (1-approval), Tool output (2), Final model response (3), and New Approval Card (3-approval)
 	for len(secondBatch) < expectedCount2 {
 		select {
 		case i := <-received:
@@ -1436,23 +1448,34 @@ func TestAgyScraper(t *testing.T) {
 	resolveFound := false
 	toolMsgFound := false
 	finalMsgFound := false
-	readyStatusFound := false
+	newApprovalCardFound := false
 	for _, m := range secondBatch {
 		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "d" {
 			resolveFound = true
 		}
 		if m.Identifier == "2" && m.Kind == "tool" && m.Message == "main.go\nmain_test.go" && m.Status == "d" {
 			toolMsgFound = true
+			if !m.Quiet {
+				// Regular message is quiet by default
+				t.Error("Expected real-time regular tool message to still be quiet")
+			}
 		}
-		if m.Identifier == "3" && m.Kind == "agent" && m.Status == "d" {
+		if m.Identifier == "3" && m.Kind == "agent" && m.Status == "w" {
 			finalMsgFound = true
+			if !m.Quiet {
+				// Regular message is quiet by default
+				t.Error("Expected real-time regular model message to still be quiet")
+			}
 		}
-		if m.Status == "r" && m.Kind == "status" && m.Message == "Ready" {
-			readyStatusFound = true
+		if m.Identifier == "3-approval" && m.Kind == "approval" && m.Status == "awaiting" {
+			newApprovalCardFound = true
+			if m.Quiet {
+				t.Error("Expected real-time tool approval card to NOT be quiet")
+			}
 		}
 	}
-	if !resolveFound || !toolMsgFound || !finalMsgFound || !readyStatusFound {
-		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v, Ready:%v", resolveFound, toolMsgFound, finalMsgFound, readyStatusFound)
+	if !resolveFound || !toolMsgFound || !finalMsgFound || !newApprovalCardFound {
+		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v, NewApproval:%v", resolveFound, toolMsgFound, finalMsgFound, newApprovalCardFound)
 	}
 }
 
@@ -2183,6 +2206,79 @@ func TestRunCliClientTmuxChoice(t *testing.T) {
 	}
 	if strings.Contains(choiceErr, "Failed to send Enter to tmux") {
 		t.Errorf("Expected choice message NOT to send Enter to tmux, but it did! Stderr: %q", choiceErr)
+	}
+}
+
+func TestSaveInteractionConsecutiveReady(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	// 1. Save a "Ready" message
+	i1 := Interaction{
+		SessionID: "sess-ready-test",
+		Kind:      "status",
+		Status:    "r",
+		Message:   "Ready",
+	}
+	err := saveInteraction(db, &i1)
+	if err != nil {
+		t.Fatalf("Failed to save first Ready message: %v", err)
+	}
+
+	// 2. Save a consecutive "Ready" message
+	i2 := Interaction{
+		SessionID: "sess-ready-test",
+		Kind:      "status",
+		Status:    "r",
+		Message:   "Ready",
+	}
+	err = saveInteraction(db, &i2)
+	if err != nil {
+		t.Fatalf("Failed to save second Ready message: %v", err)
+	}
+
+	// 3. Verify they were not duplicated (count in DB should be 1)
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = 'sess-ready-test'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected exactly 1 interaction in database, got %d", count)
+	}
+
+	// 4. Save a different message in between
+	i3 := Interaction{
+		SessionID: "sess-ready-test",
+		Kind:      "agent",
+		Status:    "w",
+		Message:   "Thinking...",
+	}
+	err = saveInteraction(db, &i3)
+	if err != nil {
+		t.Fatalf("Failed to save intermediate agent message: %v", err)
+	}
+
+	// 5. Save another "Ready" message (now non-consecutive)
+	i4 := Interaction{
+		SessionID: "sess-ready-test",
+		Kind:      "status",
+		Status:    "r",
+		Message:   "Ready",
+	}
+	err = saveInteraction(db, &i4)
+	if err != nil {
+		t.Fatalf("Failed to save third Ready message: %v", err)
+	}
+
+	// 6. Verify it was successfully inserted (total count should now be 3)
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = 'sess-ready-test'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query count after third message: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("Expected exactly 3 interactions in database, got %d", count)
 	}
 }
 
