@@ -1952,10 +1952,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 
 				if lastApprovalID != "" && lastApprovalID != data.ID+"-approval" && lastApprovalID != data.ID+"-question" {
 					// Mark previous card as done/resolved
-					resolvedKind := "approval"
-					if strings.HasSuffix(lastApprovalID, "-question") {
-						resolvedKind = "question"
-					}
+					resolvedKind := "question"
 					payload := Interaction{
 						Identifier:  lastApprovalID,
 						Status:      "d",
@@ -2129,38 +2126,68 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 								lastApprovalID = data.ID + "-question"
 							}
 						} else if !yolo {
-							// Create approval details JSON
-							details := map[string]interface{}{
-								"tool_name":  firstTool.Name,
-								"tool_input": firstTool.Args,
-							}
-							// If the tool is a command execution, map to standard type/command format
+							var cmdVal, fileVal string
 							if firstTool.Name == "run_command" {
 								var argsMap map[string]interface{}
 								if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
-									if cmdVal, ok := argsMap["CommandLine"]; ok {
-										details["type"] = "exec"
-										details["command"] = cmdVal
+									if cv, ok := argsMap["CommandLine"]; ok {
+										cmdVal, _ = cv.(string)
 									}
 								}
 							} else if firstTool.Name == "write_to_file" || firstTool.Name == "replace_file_content" || firstTool.Name == "multi_replace_file_content" {
 								var argsMap map[string]interface{}
 								if err := json.Unmarshal(firstTool.Args, &argsMap); err == nil {
-									if fileVal, ok := argsMap["TargetFile"]; ok {
-										details["type"] = "edit"
-										details["fileName"] = fileVal
+									if fv, ok := argsMap["TargetFile"]; ok {
+										fileVal, _ = fv.(string)
 									}
 								}
 							}
-							detailsJSON, _ := json.Marshal(details)
+
+							questionText := fmt.Sprintf("Allow execution of tool: %s with input: %s", firstTool.Name, string(firstTool.Args))
+							if cmdVal != "" {
+								questionText = fmt.Sprintf("Run command: %s", cmdVal)
+							} else if fileVal != "" {
+								questionText = fmt.Sprintf("Edit file: %s", fileVal)
+							}
+
+							type UIOption struct {
+								Label string `json:"label"`
+							}
+							type UIQuestion struct {
+								Header   string     `json:"header"`
+								Question string     `json:"question"`
+								Type     string     `json:"type"`
+								Options  []UIOption `json:"options"`
+							}
+							type UIQuestionPayload struct {
+								Questions []UIQuestion `json:"questions"`
+							}
+
+							uiOptions := []UIOption{
+								{Label: "Grant permission"},
+								{Label: "Grant permission for the rest of this session"},
+								{Label: "Deny permission"},
+							}
+
+							uiPayload := UIQuestionPayload{
+								Questions: []UIQuestion{
+									{
+										Header:   "Tool Permission",
+										Question: questionText,
+										Type:     "choice",
+										Options:  uiOptions,
+									},
+								},
+							}
+							payloadJSON, _ := json.Marshal(uiPayload)
 
 							approvalPayload := Interaction{
 								Identifier:      data.ID + "-approval",
-								Message:         "Approval requested",
-								DetailedMessage: string(detailsJSON),
+								Message:         "Tool permission requested",
+								DetailedMessage: string(payloadJSON),
 								Title:           "ToolPermission",
 								Agent:           "antigravity",
-								Kind:            "approval",
+								Kind:            "question",
 								Status:          "awaiting",
 								SessionID:       sessionID,
 								SessionPath:     sessionPath,
@@ -2258,7 +2285,7 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 	}
 
 	// Parse pane content
-	question, options, hasQuestion := parsePaneQuestion(string(output))
+	question, options, hasQuestion, isToolPermission := parsePaneQuestion(string(output))
 
 	if hasQuestion {
 		questionID := lastStepID + "-question"
@@ -2281,10 +2308,20 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 			for _, opt := range options {
 				uiOptions = append(uiOptions, UIOption{Label: opt})
 			}
+
+			headerText := "Question"
+			titleText := "Question"
+			messageText := "Information requested"
+			if isToolPermission {
+				headerText = "Tool Permission"
+				titleText = "ToolPermission"
+				messageText = "Tool permission requested"
+			}
+
 			uiPayload := UIQuestionPayload{
 				Questions: []UIQuestion{
 					{
-						Header:   "Question",
+						Header:   headerText,
 						Question: question,
 						Type:     "choice",
 						Options:  uiOptions,
@@ -2295,9 +2332,9 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 
 			questionPayload := Interaction{
 				Identifier:      questionID,
-				Message:         "Information requested",
+				Message:         messageText,
 				DetailedMessage: string(payloadJSON),
-				Title:           "Question",
+				Title:           titleText,
 				Agent:           "antigravity",
 				Kind:            "question",
 				Status:          "awaiting",
@@ -2328,7 +2365,7 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 	}
 }
 
-func parsePaneQuestion(paneContent string) (string, []string, bool) {
+func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 	lines := strings.Split(paneContent, "\n")
 	// Find the last line that looks like a navigation prompt:
 	// "Navigate" and "Select" and "Skip"
@@ -2342,7 +2379,7 @@ func parsePaneQuestion(paneContent string) (string, []string, bool) {
 	}
 
 	if navIdx == -1 {
-		return "", nil, false
+		return "", nil, false, false
 	}
 
 	// Ensure the navigation prompt is at the bottom of the visible terminal output
@@ -2353,17 +2390,20 @@ func parsePaneQuestion(paneContent string) (string, []string, bool) {
 		}
 	}
 	if nonEmptyBelow > 3 {
-		return "", nil, false
+		return "", nil, false, false
 	}
 
 	var options []string
-	var question string
+	var qLines []string
 	foundOptions := false
 
 	for i := navIdx - 1; i >= 0; i-- {
 		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
+			if foundOptions && len(qLines) > 0 {
+				break
+			}
 			continue
 		}
 
@@ -2373,7 +2413,7 @@ func parsePaneQuestion(paneContent string) (string, []string, bool) {
 			options = append([]string{text}, options...)
 		} else {
 			if foundOptions {
-				// This is the question line!
+				// This is a question line. Collect it.
 				qLine := trimmed
 				if strings.HasPrefix(qLine, "Question") {
 					colonIdx := strings.Index(qLine, ":")
@@ -2381,16 +2421,23 @@ func parsePaneQuestion(paneContent string) (string, []string, bool) {
 						qLine = strings.TrimSpace(qLine[colonIdx+1:])
 					}
 				}
-				question = qLine
-				break
+				qLines = append([]string{qLine}, qLines...)
 			}
 		}
 	}
 
-	if question != "" && len(options) > 0 {
-		return question, options, true
+	if len(qLines) > 0 && len(options) > 0 {
+		question := strings.Join(qLines, "\n")
+		isToolPermission := false
+		for _, opt := range options {
+			if strings.Contains(strings.ToLower(opt), "permission") {
+				isToolPermission = true
+				break
+			}
+		}
+		return question, options, true, isToolPermission
 	}
-	return "", nil, false
+	return "", nil, false, false
 }
 
 func parseOptionLine(line string) (int, string, bool) {

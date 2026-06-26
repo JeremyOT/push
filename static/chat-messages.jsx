@@ -309,6 +309,8 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
   const a = AGENTS[msg.agent];
   const decided = !!decision || msg.status === 'd' || msg.status === 'done';
   const questions = msg.questions || [];
+  const isToolPermission = msg.title === 'ToolPermission' || (questions.length > 0 && questions[0].header === 'Tool Permission');
+  const boxHeader = isToolPermission ? 'Tool Permission' : 'Information Requested';
 
   return (
     <div style={{ display: 'flex', gap: 10, maxWidth: '92%' }}>
@@ -327,8 +329,12 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
               fontFamily: FONT_MONO, fontSize: 10.5, color: theme.fgMuted,
               textTransform: 'uppercase', letterSpacing: 0.6,
             }}>
-              <IconSearch size={12} style={{ color: theme.accent }} />
-              Information Requested
+              {isToolPermission ? (
+                <IconCommand size={12} style={{ color: theme.accent }} />
+              ) : (
+                <IconSearch size={12} style={{ color: theme.accent }} />
+              )}
+              {boxHeader}
               <span style={{ flex: 1 }} />
             </div>
             

@@ -150,8 +150,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       else if (displayTitle.endsWith('Working')) status = 'working';
     }
 
-    // Explicit kind handling
-    if (msg.kind === 'question' || displayTitle === 'Question' || displayTitle.endsWith(' - Question')) {
+    if (msg.kind === 'question' || displayTitle === 'Question' || displayTitle.endsWith(' - Question') || displayTitle === 'ToolPermission' || displayTitle === 'Tool Permission') {
       let data = { questions: [] };
       try {
         data = JSON.parse(msg.detailed_message || msg.message);

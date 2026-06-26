@@ -1407,7 +1407,7 @@ func TestAgyScraper(t *testing.T) {
 				t.Error("Expected initial catch-up model message to be quiet")
 			}
 		}
-		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "awaiting" {
+		if m.Identifier == "1-approval" && m.Kind == "question" && m.Status == "awaiting" {
 			approvalCardFound = true
 			if !m.Quiet {
 				t.Error("Expected initial catch-up approval card to be quiet")
@@ -1450,7 +1450,7 @@ func TestAgyScraper(t *testing.T) {
 	finalMsgFound := false
 	newApprovalCardFound := false
 	for _, m := range secondBatch {
-		if m.Identifier == "1-approval" && m.Kind == "approval" && m.Status == "d" {
+		if m.Identifier == "1-approval" && m.Kind == "question" && m.Status == "d" {
 			resolveFound = true
 		}
 		if m.Identifier == "2" && m.Kind == "tool" && m.Message == "main.go\nmain_test.go" && m.Status == "d" {
@@ -1467,7 +1467,7 @@ func TestAgyScraper(t *testing.T) {
 				t.Error("Expected real-time regular model message to still be quiet")
 			}
 		}
-		if m.Identifier == "3-approval" && m.Kind == "approval" && m.Status == "awaiting" {
+		if m.Identifier == "3-approval" && m.Kind == "question" && m.Status == "awaiting" {
 			newApprovalCardFound = true
 			if m.Quiet {
 				t.Error("Expected real-time tool approval card to NOT be quiet")
@@ -2112,9 +2112,12 @@ Question 1/1: Which database system do you prefer for small-to-medium scale Go p
 
   ↑/↓ Navigate · enter Select · esc Skip
 `
-	question, options, ok := parsePaneQuestion(paneContent)
+	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
 	if !ok {
 		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
+	}
+	if isToolPermission {
+		t.Errorf("Expected isToolPermission to be false, got true")
 	}
 
 	expectedQuestion := "Which database system do you prefer for small-to-medium scale Go projects?"
@@ -2140,6 +2143,47 @@ Question 1/1: Which database system do you prefer for small-to-medium scale Go p
 		}
 	}
 }
+
+func TestParsePaneToolPermission(t *testing.T) {
+	paneContent := `Action: command
+Target: git commit -m "Fix local syntax error in gemini-agent wrapper script"
+Reason: Commit changes to Git
+
+1. Grant permission
+2. Grant permission for the rest of this session
+3. Deny permission
+
+  ↑/↓ Navigate · enter Select · esc Skip
+`
+	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
+	if !ok {
+		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
+	}
+	if !isToolPermission {
+		t.Errorf("Expected isToolPermission to be true, got false")
+	}
+
+	expectedQuestion := "Action: command\nTarget: git commit -m \"Fix local syntax error in gemini-agent wrapper script\"\nReason: Commit changes to Git"
+	if question != expectedQuestion {
+		t.Errorf("Expected question:\n%q\nGot:\n%q", expectedQuestion, question)
+	}
+
+	expectedOptions := []string{
+		"Grant permission",
+		"Grant permission for the rest of this session",
+		"Deny permission",
+	}
+	if len(options) != len(expectedOptions) {
+		t.Fatalf("Expected %d options, got %d", len(expectedOptions), len(options))
+	}
+
+	for i, opt := range options {
+		if opt != expectedOptions[i] {
+			t.Errorf("Option %d: expected %q, got %q", i, expectedOptions[i], opt)
+		}
+	}
+}
+
 
 func TestRunCliClientTmuxChoice(t *testing.T) {
 	db, tempDir := setupTestDB(t)
