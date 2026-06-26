@@ -197,7 +197,7 @@ while true; do
                 PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
                 if [ -n "$PID" ]; then
                     kill "$PID" 2>/dev/null
-                    local count=0
+                    count=0
                     while kill -0 "$PID" 2>/dev/null && [ $count -lt 10 ]; do
                         sleep 0.1
                         count=$((count + 1))
