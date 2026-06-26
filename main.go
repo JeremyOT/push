@@ -1805,11 +1805,6 @@ func runGeminiAgent(args []string, address string) {
 }
 
 func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, tmuxTarget string, yolo bool) {
-	if logFile != "" {
-		fmt.Fprintf(os.Stderr, "Watching log file: %s\n", logFile)
-	} else {
-		fmt.Fprintf(os.Stderr, "Watching log directory: %s\n", logDir)
-	}
 
 	var currentLogFile string
 	var fileHandle *os.File
@@ -1870,11 +1865,6 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 			info, _ := os.Stat(latest)
 			startAtEnd := currentLogFile == "" && time.Since(info.ModTime()) > 2*time.Minute && logFile == ""
 
-			if currentLogFile == "" {
-				fmt.Fprintf(os.Stderr, "Found log file: %s (startAtEnd=%v)\n", latest, startAtEnd)
-			} else {
-				fmt.Fprintf(os.Stderr, "Switching to log file: %s\n", latest)
-			}
 			currentLogFile = latest
 			h, err := os.Open(currentLogFile)
 			if err != nil {

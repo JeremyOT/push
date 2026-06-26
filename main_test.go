@@ -1659,6 +1659,22 @@ func TestGeminiAgentScriptContinueAlias(t *testing.T) {
 	}
 }
 
+func TestGeminiAgentScriptNoInfoLogging(t *testing.T) {
+	silencedLogs := []string{
+		`echo "Resuming session:`,
+		`echo "Started session:`,
+		`echo "Initializing new session..."`,
+		`echo "Started internal agy log scraper`,
+		`echo "Restarting and resuming session..."`,
+		`echo "Restarting fresh..."`,
+	}
+	for _, log := range silencedLogs {
+		if strings.Contains(geminiAgentScript, log) {
+			t.Errorf("gemini-agent script should not log normal operational messages: %q", log)
+		}
+	}
+}
+
 func TestAgyScraperYolo(t *testing.T) {
 	// Create a temp file for the transcript
 	tmpFile, err := os.CreateTemp("", "transcript_yolo_*.jsonl")

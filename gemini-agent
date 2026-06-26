@@ -122,10 +122,6 @@ while true; do
         if [ -z "$SESSION_ID" ]; then
             echo "Warning: No session found to resume. Initializing new session..."
             RESUME=false
-        else
-            if [ "$AGENT_CMD" != "agy" ]; then
-                echo "Resuming session: $SESSION_ID"
-            fi
         fi
     fi
 
@@ -136,13 +132,10 @@ while true; do
                 UUID=$(python3 -c "import uuid; print(uuid.uuid4())")
             fi
             SESSION_ID="$UUID"
-            echo "Started session: $SESSION_ID"
         else
-            echo "Initializing new session..."
             # Start and exit immediately to create the session
             echo "/quit" | $AGENT_CMD --skip-trust > /dev/null 2>&1
             SESSION_ID=$($AGENT_CMD --list-sessions | grep '\[.*\]' | tail -n 1 | sed -E 's/.*\[(.*)\].*/\1/')
-            echo "Started session: $SESSION_ID"
         fi
     fi
 
@@ -187,8 +180,6 @@ while true; do
             done
 
             if [ "$RESUME" = true ]; then
-                echo "Resuming session: $CONV_ID"
-
                 # Start push client in the background now that we have the session/conversation ID
                 $PUSH_CMD --cli-service tmux \
                     --session-id "$CONV_ID" \
@@ -198,7 +189,6 @@ while true; do
                     --tmux-target "$TMUX_TARGET" &
                 echo $! > "$PUSH_PID_FILE"
             else
-                echo "Started session: $CONV_ID"
                 
                 # Kill the old startup push client first to allow its exit status to be sent before renaming
                 PID=$(cat "$PUSH_PID_FILE" 2>/dev/null)
@@ -229,7 +219,6 @@ while true; do
             fi
 
             LOG_FILE="$APP_DATA_DIR/brain/$CONV_ID/.system_generated/logs/transcript_full.jsonl"
-            echo "Started internal agy log scraper for $LOG_FILE"
 
             # Now start the real scraper
             YOLO_FLAG=""
@@ -269,10 +258,8 @@ while true; do
         MODE=$(cat "$RESTART_FILE")
         rm -f "$RESTART_FILE"
         if [ "$MODE" = "resume" ]; then
-            echo "Restarting and resuming session..."
             RESUME=true
         else
-            echo "Restarting fresh..."
             RESUME=false
         fi
         continue
