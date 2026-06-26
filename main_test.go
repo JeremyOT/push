@@ -1373,7 +1373,7 @@ func TestAgyScraper(t *testing.T) {
 	defer srv.Close()
 
 	// Run scraper in background with yolo=false
-	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", false)
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", "", false)
 
 	// Wait and verify first batch of messages
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -1692,7 +1692,7 @@ func TestAgyScraperYolo(t *testing.T) {
 	defer srv.Close()
 
 	// Run scraper in background with yolo=true to test push notification and approval card suppression
-	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", true)
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", "", true)
 
 	// Wait and verify first batch of messages
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
@@ -1920,7 +1920,7 @@ func TestAgyScraperQuestion(t *testing.T) {
 	defer srv.Close()
 
 	// Run scraper in background
-	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", false)
+	go runAgyScraper("", tmpFile.Name(), srv.URL, "test-session", "/test/path", "", false)
 
 	// Wait and verify messages
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -2055,6 +2055,50 @@ func TestRunCliClientTmuxAgent(t *testing.T) {
 	}
 	if !hasExit {
 		t.Error("Missing 'No longer forwarding responses' message")
+	}
+}
+
+func TestParsePaneQuestion(t *testing.T) {
+	paneContent := `Question
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Question 1/1: Which database system do you prefer for small-to-medium scale Go projects?
+
+> 1. SQLite (embedded, single-file)
+  2. PostgreSQL (robust, feature-rich relational)
+  3. MySQL / MariaDB
+  4. Redis / Key-Value store
+  5. MongoDB / Document-based
+  6. Write-in...
+
+  ↑/↓ Navigate · enter Select · esc Skip
+`
+	question, options, ok := parsePaneQuestion(paneContent)
+	if !ok {
+		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
+	}
+
+	expectedQuestion := "Which database system do you prefer for small-to-medium scale Go projects?"
+	if question != expectedQuestion {
+		t.Errorf("Expected question %q, got %q", expectedQuestion, question)
+	}
+
+	expectedOptions := []string{
+		"SQLite (embedded, single-file)",
+		"PostgreSQL (robust, feature-rich relational)",
+		"MySQL / MariaDB",
+		"Redis / Key-Value store",
+		"MongoDB / Document-based",
+		"Write-in...",
+	}
+	if len(options) != len(expectedOptions) {
+		t.Fatalf("Expected %d options, got %d", len(expectedOptions), len(options))
+	}
+
+	for i, opt := range options {
+		if opt != expectedOptions[i] {
+			t.Errorf("Option %d: expected %q, got %q", i, expectedOptions[i], opt)
+		}
 	}
 }
 

@@ -241,6 +241,7 @@ while true; do
                 --agy-backend-url "http://${PUSH_ADDRESS:-127.0.0.1:8089}" \
                 --agy-fallback-session-id "$CONV_ID" \
                 --agy-session-path "$SESSION_PATH" \
+                --tmux-target "$TMUX_TARGET" \
                 $YOLO_FLAG
         ) &
         SCRAPER_PID=$!

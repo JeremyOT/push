@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -161,7 +162,7 @@ func main() {
 	flag.Parse()
 
 	if *internalAgyScraper {
-		runAgyScraper(*agyLogDir, *agyLogFile, *agyBackendURL, *agyFallbackSessionID, *agySessionPath, *yoloAgent)
+		runAgyScraper(*agyLogDir, *agyLogFile, *agyBackendURL, *agyFallbackSessionID, *agySessionPath, *tmuxTarget, *yoloAgent)
 		return
 	}
 
@@ -1801,7 +1802,7 @@ func runGeminiAgent(args []string, address string) {
 	}
 }
 
-func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath string, yolo bool) {
+func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, tmuxTarget string, yolo bool) {
 	if logFile != "" {
 		fmt.Fprintf(os.Stderr, "Watching log file: %s\n", logFile)
 	} else {
@@ -1817,6 +1818,9 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 	sessionID := fallbackSessionID
 	lastProcessedMsgFinalized := false
 	lastApprovalID := ""
+	lastStepID := ""
+	lastTmuxCheckTime := time.Time{}
+	lastSentQuestionText := ""
 
 	getLatestLogFile := func(dir string) string {
 		if logFile != "" {
@@ -1930,6 +1934,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 				if data.ID == "" {
 					continue
 				}
+				lastStepID = data.ID
 
 				if lastApprovalID != "" && lastApprovalID != data.ID+"-approval" && lastApprovalID != data.ID+"-question" {
 					// Mark previous card as done/resolved
@@ -2168,6 +2173,10 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath s
 						lineAccumulator.Reset()
 					}
 				}
+				if tmuxTarget != "" && time.Since(lastTmuxCheckTime) >= 500*time.Millisecond {
+					lastTmuxCheckTime = time.Now()
+					checkTmuxQuestion(tmuxTarget, &lastApprovalID, &lastSentQuestionText, sessionID, sessionPath, lastStepID, send)
+				}
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
@@ -2219,6 +2228,163 @@ func normalizeArgs(args []string) []string {
 		}
 	}
 	return normalized
+}
+
+func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *string, sessionID, sessionPath, lastStepID string, send func(Interaction)) {
+	if lastStepID == "" {
+		return
+	}
+
+	// Capture tmux pane contents
+	cmd := exec.Command("tmux", "capture-pane", "-t", tmuxTarget, "-p")
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	// Parse pane content
+	question, options, hasQuestion := parsePaneQuestion(string(output))
+
+	if hasQuestion {
+		questionID := lastStepID + "-question"
+		// If we haven't sent this question yet
+		if *lastApprovalID != questionID || *lastSentQuestionText != question {
+			type UIOption struct {
+				Label string `json:"label"`
+			}
+			type UIQuestion struct {
+				Header   string     `json:"header"`
+				Question string     `json:"question"`
+				Type     string     `json:"type"`
+				Options  []UIOption `json:"options"`
+			}
+			type UIQuestionPayload struct {
+				Questions []UIQuestion `json:"questions"`
+			}
+
+			var uiOptions []UIOption
+			for _, opt := range options {
+				uiOptions = append(uiOptions, UIOption{Label: opt})
+			}
+			uiPayload := UIQuestionPayload{
+				Questions: []UIQuestion{
+					{
+						Header:   "Question",
+						Question: question,
+						Type:     "choice",
+						Options:  uiOptions,
+					},
+				},
+			}
+			payloadJSON, _ := json.Marshal(uiPayload)
+
+			questionPayload := Interaction{
+				Identifier:      questionID,
+				Message:         "Information requested",
+				DetailedMessage: string(payloadJSON),
+				Title:           "Question",
+				Agent:           "antigravity",
+				Kind:            "question",
+				Status:          "awaiting",
+				SessionID:       sessionID,
+				SessionPath:     sessionPath,
+				Quiet:           false, // Always show questions
+			}
+			send(questionPayload)
+			*lastApprovalID = questionID
+			*lastSentQuestionText = question
+		}
+	} else {
+		// No question in pane. If we previously had a question open, resolve it
+		if *lastApprovalID != "" && strings.HasSuffix(*lastApprovalID, "-question") {
+			payload := Interaction{
+				Identifier:  *lastApprovalID,
+				Status:      "d",
+				Kind:        "question",
+				Agent:       "antigravity",
+				SessionID:   sessionID,
+				SessionPath: sessionPath,
+				Quiet:       true,
+			}
+			send(payload)
+			*lastApprovalID = ""
+			*lastSentQuestionText = ""
+		}
+	}
+}
+
+func parsePaneQuestion(paneContent string) (string, []string, bool) {
+	lines := strings.Split(paneContent, "\n")
+	// Find the last line that looks like a navigation prompt:
+	// "Navigate" and "Select" and "Skip"
+	navIdx := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		if strings.Contains(line, "Navigate") && strings.Contains(line, "Select") && strings.Contains(line, "Skip") {
+			navIdx = i
+			break
+		}
+	}
+
+	if navIdx == -1 {
+		return "", nil, false
+	}
+
+	var options []string
+	var question string
+	foundOptions := false
+
+	for i := navIdx - 1; i >= 0; i-- {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		_, text, ok := parseOptionLine(line)
+		if ok {
+			foundOptions = true
+			options = append([]string{text}, options...)
+		} else {
+			if foundOptions {
+				// This is the question line!
+				qLine := trimmed
+				if strings.HasPrefix(qLine, "Question") {
+					colonIdx := strings.Index(qLine, ":")
+					if colonIdx != -1 && colonIdx < len(qLine)-1 {
+						qLine = strings.TrimSpace(qLine[colonIdx+1:])
+					}
+				}
+				question = qLine
+				break
+			}
+		}
+	}
+
+	if question != "" && len(options) > 0 {
+		return question, options, true
+	}
+	return "", nil, false
+}
+
+func parseOptionLine(line string) (int, string, bool) {
+	trimmed := strings.TrimSpace(line)
+	trimmed = strings.TrimPrefix(trimmed, ">")
+	trimmed = strings.TrimSpace(trimmed)
+	if trimmed == "" {
+		return 0, "", false
+	}
+	dotIdx := strings.Index(trimmed, ".")
+	if dotIdx == -1 {
+		return 0, "", false
+	}
+	numStr := trimmed[:dotIdx]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return 0, "", false
+	}
+	optionText := strings.TrimSpace(trimmed[dotIdx+1:])
+	return num, optionText, true
 }
 
 
