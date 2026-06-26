@@ -513,13 +513,13 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   };
 
   const handleDecide = (msgId, decision) => {
-    setDecisions((d) => ({ ...d, [msgId]: decision }));
     updatePendingWriteIn(null);
     
     const msg = messages.find(m => m.id === msgId);
     const isApproval = msg && msg.kind === 'approval';
 
     if (isApproval) {
+        setDecisions((d) => ({ ...d, [msgId]: decision }));
         if (decision === 'Allow' || decision === 'Allow Once') handleSend('1');
         else if (decision === 'Allow Session') handleSend('2');
         else if (decision === 'Allow Forever') handleSend('3');
@@ -542,8 +542,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
             if (optIdx >= 0 && optIdx < q.options.length) {
                 const opt = q.options[optIdx];
                 const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
+                const cleanLabel = optLabel.trim().toLowerCase();
                 const isLast = optIdx === q.options.length - 1;
-                const isExactWriteIn = isLast && optLabel === 'Write-in...';
+                const isExactWriteIn = isLast && (
+                    cleanLabel === 'write-in...' || 
+                    cleanLabel === 'write-in' || 
+                    cleanLabel === 'write in...' || 
+                    cleanLabel === 'write in'
+                );
                 if (isExactWriteIn) {
                     updatePendingWriteIn({
                         msgId: msgId,
@@ -553,15 +559,18 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     return;
                 }
             }
+            setDecisions((d) => ({ ...d, [msgId]: decision }));
             handleSend(decision, 'choice');
             return;
         }
         if (q.type === 'yesno') {
+            setDecisions((d) => ({ ...d, [msgId]: decision }));
             handleSend(decision, 'choice');
             return;
         }
     }
 
+    setDecisions((d) => ({ ...d, [msgId]: decision }));
     handleSend(decision);
   };
 
