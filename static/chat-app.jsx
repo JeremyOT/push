@@ -10,8 +10,64 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [composerValue, setComposerValue] = React.useState('');
   const [expandedTools, setExpandedTools] = React.useState({});
-  const [decisions, setDecisions] = React.useState({});
+  const [localDecisions, setLocalDecisions] = React.useState({});
   const [messages, setMessages] = React.useState([]);
+
+  const decisions = React.useMemo(() => {
+    const map = {};
+    for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        if (m.kind === 'question' || m.kind === 'approval') {
+            for (let j = i + 1; j < messages.length; j++) {
+                const next = messages[j];
+                if (next.sessionId === m.sessionId) {
+                    if (next.isUser || next.kind === 'choice') {
+                        let val = next.message;
+                        if (m.kind === 'approval') {
+                            if (val === '1') val = 'Allow';
+                            else if (val === '2') val = 'Allow Session';
+                            else if (val === '3') val = 'Allow Forever';
+                            else if (val === '4' || val.startsWith('/deny')) val = 'Deny';
+                            else if (val.startsWith('/approve')) val = 'Approve';
+                        }
+                        map[m.id] = val;
+                        
+                        // Check if this was a write-in choice and look for a subsequent write-in text response
+                        if (m.kind === 'question' && m.questions && m.questions[0]) {
+                            const q = m.questions[0];
+                            if (q.type === 'choice' && q.options) {
+                                const idx = parseInt(next.message, 10) - 1;
+                                if (idx === q.options.length - 1) {
+                                    const opt = q.options[idx];
+                                    const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
+                                    const cleanLabel = optLabel.trim().toLowerCase();
+                                    const isWriteIn = cleanLabel === 'write-in...' || cleanLabel === 'write-in' || cleanLabel === 'write in...' || cleanLabel === 'write in';
+                                    if (isWriteIn) {
+                                        for (let k = j + 1; k < messages.length; k++) {
+                                            const writeInMsg = messages[k];
+                                            if (writeInMsg.sessionId === m.sessionId && (writeInMsg.isUser || writeInMsg.kind === 'user')) {
+                                                map[m.id] = next.message + ':' + writeInMsg.message;
+                                                break;
+                                            }
+                                            if (writeInMsg.kind === 'question' || writeInMsg.kind === 'approval') {
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+                    if (next.kind === 'question' || next.kind === 'approval') {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return { ...map, ...localDecisions };
+  }, [messages, localDecisions]);
   const [toast, setToast] = React.useState(null);
   const [pendingWriteIn, setPendingWriteIn] = React.useState(null);
   const pendingWriteInRef = React.useRef(null);
@@ -465,7 +521,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (pendingWriteInRef.current) {
         const { decision, msgId } = pendingWriteInRef.current;
         updatePendingWriteIn(null);
-        setDecisions((d) => ({ ...d, [msgId]: decision }));
+        setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
         handleSend(decision, 'choice');
         setTimeout(() => {
             handleSend(text);
@@ -519,7 +575,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     const isApproval = msg && msg.kind === 'approval';
 
     if (isApproval) {
-        setDecisions((d) => ({ ...d, [msgId]: decision }));
+        setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
         if (decision === 'Allow' || decision === 'Allow Once') handleSend('1');
         else if (decision === 'Allow Session') handleSend('2');
         else if (decision === 'Allow Forever') handleSend('3');
@@ -559,18 +615,18 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     return;
                 }
             }
-            setDecisions((d) => ({ ...d, [msgId]: decision }));
+            setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
             handleSend(decision, 'choice');
             return;
         }
         if (q.type === 'yesno') {
-            setDecisions((d) => ({ ...d, [msgId]: decision }));
+            setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
             handleSend(decision, 'choice');
             return;
         }
     }
 
-    setDecisions((d) => ({ ...d, [msgId]: decision }));
+    setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
     handleSend(decision);
   };
 

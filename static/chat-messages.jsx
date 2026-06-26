@@ -307,7 +307,7 @@ function ApprovalCard({ msg, theme, decision, onDecide }) {
 
 function QuestionCard({ msg, theme, decision, onDecide }) {
   const a = AGENTS[msg.agent];
-  const decided = !!decision;
+  const decided = !!decision || msg.status === 'd' || msg.status === 'done';
   const questions = msg.questions || [];
 
   return (
@@ -414,7 +414,36 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
               background: theme.panel2,
             }}>
               <IconCheck size={14} style={{ color: theme.ok }} />
-              Answered: <strong>{decision}</strong>
+              {(() => {
+                let decisionText = decision || '';
+                if (decision && questions && questions[0]) {
+                  const q = questions[0];
+                  let mainDecision = decision;
+                  let writeInText = "";
+                  if (decision.includes(':')) {
+                    const parts = decision.split(':');
+                    mainDecision = parts[0];
+                    writeInText = parts.slice(1).join(':');
+                  }
+                  
+                  if (q.type === 'choice' && q.options) {
+                    const idx = parseInt(mainDecision, 10) - 1;
+                    if (idx >= 0 && idx < q.options.length) {
+                      const opt = q.options[idx];
+                      const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
+                      if (writeInText) {
+                        decisionText = `${mainDecision}. ${optLabel} (${writeInText})`;
+                      } else {
+                        decisionText = `${mainDecision}. ${optLabel}`;
+                      }
+                    }
+                  } else if (q.type === 'yesno') {
+                    if (mainDecision === 'y') decisionText = 'y. Yes';
+                    else if (mainDecision === 'n') decisionText = 'n. No';
+                  }
+                }
+                return <>Answered{decisionText ? ': ' : ''}<strong>{decisionText}</strong></>;
+              })()}
             </div>
           )}
         </div>
