@@ -2102,6 +2102,74 @@ Question 1/1: Which database system do you prefer for small-to-medium scale Go p
 	}
 }
 
+func TestRunCliClientTmuxChoice(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/service", handleService(db))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	addr := server.Listener.Addr().String()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stdinReader := strings.NewReader("")
+	var stdout, stderr bytes.Buffer
+
+	// Start in tmux mode
+	go runCliClient(ctx, addr, "tmux", "nonexistent-session:0.0", "sess-tmux-choice", "Tmux Choice Test", "/tmp", "agy", false, stdinReader, &stdout, &stderr)
+
+	// Wait for registration
+	time.Sleep(300 * time.Millisecond)
+
+	// Clear stderr
+	stderr.Reset()
+
+	// 1. Post a normal (non-choice) user message. It should try to send keys AND Enter.
+	iNormal := Interaction{
+		Message:   "hello",
+		IsUser:    true,
+		SessionID: "sess-tmux-choice",
+	}
+	saveInteraction(db, &iNormal)
+	broadcaster.Broadcast(iNormal)
+
+	// Wait for the message to be processed by runCliClient
+	time.Sleep(600 * time.Millisecond)
+
+	normalErr := stderr.String()
+	if !strings.Contains(normalErr, "Failed to send Enter to tmux") {
+		t.Errorf("Expected normal message to trigger 'Failed to send Enter to tmux', got stderr: %q", normalErr)
+	}
+
+	// Clear stderr
+	stderr.Reset()
+
+	// 2. Post a choice user message. It should try to send keys but NOT Enter.
+	iChoice := Interaction{
+		Message:   "3",
+		IsUser:    true,
+		Kind:      "choice",
+		SessionID: "sess-tmux-choice",
+	}
+	saveInteraction(db, &iChoice)
+	broadcaster.Broadcast(iChoice)
+
+	time.Sleep(300 * time.Millisecond)
+
+	choiceErr := stderr.String()
+	if !strings.Contains(choiceErr, "Failed to send keys to tmux") {
+		t.Errorf("Expected choice message to try sending keys, got stderr: %q", choiceErr)
+	}
+	if strings.Contains(choiceErr, "Failed to send Enter to tmux") {
+		t.Errorf("Expected choice message NOT to send Enter to tmux, but it did! Stderr: %q", choiceErr)
+	}
+}
+
 
 
 

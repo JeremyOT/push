@@ -453,7 +453,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     return () => clearInterval(interval);
   }, []);
 
-  const handleSend = async (text) => {
+  const handleSend = async (text, kind) => {
     if (!config.interactive) return;
     
     if (text.startsWith('/push register')) {
@@ -468,6 +468,9 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
     try {
         const payload = { message: text, is_user: true };
+        if (kind) {
+            payload.kind = kind;
+        }
         if (thread.sessionId) {
             payload.session_id = thread.sessionId;
         }
@@ -522,7 +525,14 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                 const opt = q.options[optIdx];
                 const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
                 const lowerLabel = optLabel.toLowerCase();
-                if (lowerLabel.includes('write-in') || lowerLabel.includes('write in')) {
+                const isLast = optIdx === q.options.length - 1;
+                const isWriteIn = isLast && (
+                    lowerLabel.includes('write') || 
+                    lowerLabel.includes('custom') || 
+                    lowerLabel.includes('other') ||
+                    lowerLabel.includes('input')
+                );
+                if (isWriteIn || lowerLabel.includes('write-in') || lowerLabel.includes('write in')) {
                     const userInput = prompt("Enter your write-in response:");
                     if (userInput === null) {
                         setDecisions((d) => {
@@ -532,13 +542,19 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         });
                         return;
                     }
-                    handleSend(decision);
+                    handleSend(decision, 'choice');
                     setTimeout(() => {
                         handleSend(userInput);
                     }, 500);
                     return;
                 }
             }
+            handleSend(decision, 'choice');
+            return;
+        }
+        if (q.type === 'yesno') {
+            handleSend(decision, 'choice');
+            return;
         }
     }
 

@@ -1165,12 +1165,14 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 						if err := cmd.Run(); err != nil {
 							fmt.Fprintf(stderr, "\rFailed to send keys to tmux: %v (Target: %s)\n", err, tmuxTarget)
 						}
-						// Small sleep before Enter
-						time.Sleep(200 * time.Millisecond)
-						// Send Enter
-						cmd = exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Enter")
-						if err := cmd.Run(); err != nil {
-							fmt.Fprintf(stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
+						if i.Kind != "choice" {
+							// Small sleep before Enter
+							time.Sleep(200 * time.Millisecond)
+							// Send Enter
+							cmd = exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "Enter")
+							if err := cmd.Run(); err != nil {
+								fmt.Fprintf(stderr, "\rFailed to send Enter to tmux: %v (Target: %s)\n", err, tmuxTarget)
+							}
 						}
 						if needsPrompt {
 							fmt.Fprint(stdout, "> ")
