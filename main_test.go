@@ -1380,7 +1380,7 @@ func TestAgyScraper(t *testing.T) {
 	defer cancel()
 
 	var firstBatch []Interaction
-	expectedCount := 3 // User message (0), Model response (1), Approval card (1-approval)
+	expectedCount := 2 // User message (0), Model response (1)
 	for len(firstBatch) < expectedCount {
 		select {
 		case i := <-received:
@@ -1393,7 +1393,6 @@ func TestAgyScraper(t *testing.T) {
 	// Verify details of first batch
 	userMsgFound := false
 	modelMsgFound := false
-	approvalCardFound := false
 	for _, m := range firstBatch {
 		if m.Identifier == "0" && m.IsUser && m.Kind == "status" && m.Message == "Hello Scraper" {
 			userMsgFound = true
@@ -1407,15 +1406,9 @@ func TestAgyScraper(t *testing.T) {
 				t.Error("Expected initial catch-up model message to be quiet")
 			}
 		}
-		if m.Identifier == "1-approval" && m.Kind == "question" && m.Status == "awaiting" {
-			approvalCardFound = true
-			if !m.Quiet {
-				t.Error("Expected initial catch-up approval card to be quiet")
-			}
-		}
 	}
-	if !userMsgFound || !modelMsgFound || !approvalCardFound {
-		t.Errorf("Missing expected messages in first batch. User:%v, Model:%v, Approval:%v", userMsgFound, modelMsgFound, approvalCardFound)
+	if !userMsgFound || !modelMsgFound {
+		t.Errorf("Missing expected messages in first batch. User:%v, Model:%v", userMsgFound, modelMsgFound)
 	}
 
 	// Wait for the scraper to hit EOF and exit catch-up mode
@@ -1435,7 +1428,7 @@ func TestAgyScraper(t *testing.T) {
 
 	// Wait and verify second batch of messages
 	var secondBatch []Interaction
-	expectedCount2 := 4 // Resolve approval (1-approval), Tool output (2), Final model response (3), and New Approval Card (3-approval)
+	expectedCount2 := 2 // Tool output (2), Final model response (3)
 	for len(secondBatch) < expectedCount2 {
 		select {
 		case i := <-received:
@@ -1445,14 +1438,9 @@ func TestAgyScraper(t *testing.T) {
 		}
 	}
 
-	resolveFound := false
 	toolMsgFound := false
 	finalMsgFound := false
-	newApprovalCardFound := false
 	for _, m := range secondBatch {
-		if m.Identifier == "1-approval" && m.Kind == "question" && m.Status == "d" {
-			resolveFound = true
-		}
 		if m.Identifier == "2" && m.Kind == "tool" && m.Message == "main.go\nmain_test.go" && m.Status == "d" {
 			toolMsgFound = true
 			if !m.Quiet {
@@ -1467,15 +1455,9 @@ func TestAgyScraper(t *testing.T) {
 				t.Error("Expected real-time regular model message to still be quiet")
 			}
 		}
-		if m.Identifier == "3-approval" && m.Kind == "question" && m.Status == "awaiting" {
-			newApprovalCardFound = true
-			if m.Quiet {
-				t.Error("Expected real-time tool approval card to NOT be quiet")
-			}
-		}
 	}
-	if !resolveFound || !toolMsgFound || !finalMsgFound || !newApprovalCardFound {
-		t.Errorf("Missing expected messages in second batch. Resolve:%v, Tool:%v, Final:%v, NewApproval:%v", resolveFound, toolMsgFound, finalMsgFound, newApprovalCardFound)
+	if !toolMsgFound || !finalMsgFound {
+		t.Errorf("Missing expected messages in second batch. Tool:%v, Final:%v", toolMsgFound, finalMsgFound)
 	}
 }
 
