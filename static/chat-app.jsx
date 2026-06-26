@@ -514,6 +514,34 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     }
 
     // For questions or other interactions
+    if (msg && msg.kind === 'question' && msg.questions && msg.questions[0]) {
+        const q = msg.questions[0];
+        if (q.type === 'choice' && q.options) {
+            const optIdx = parseInt(decision, 10) - 1;
+            if (optIdx >= 0 && optIdx < q.options.length) {
+                const opt = q.options[optIdx];
+                const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
+                const lowerLabel = optLabel.toLowerCase();
+                if (lowerLabel.includes('write-in') || lowerLabel.includes('write in')) {
+                    const userInput = prompt("Enter your write-in response:");
+                    if (userInput === null) {
+                        setDecisions((d) => {
+                            const next = { ...d };
+                            delete next[msgId];
+                            return next;
+                        });
+                        return;
+                    }
+                    handleSend(decision);
+                    setTimeout(() => {
+                        handleSend(userInput);
+                    }, 500);
+                    return;
+                }
+            }
+        }
+    }
+
     handleSend(decision);
   };
 
