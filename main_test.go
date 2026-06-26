@@ -2326,6 +2326,21 @@ func TestSaveInteractionConsecutiveReady(t *testing.T) {
 	}
 }
 
+func TestStaticAssetsContainsToolDenyLogic(t *testing.T) {
+	data, err := staticFS.ReadFile("static/chat-app.jsx")
+	if err != nil {
+		t.Fatalf("Failed to read static/chat-app.jsx: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "isToolDenyChoice") {
+		t.Error("static/chat-app.jsx does not contain 'isToolDenyChoice' logic")
+	}
+	if !strings.Contains(content, "isToolPermission && isLast") {
+		t.Error("static/chat-app.jsx does not contain immediate ready state transition on tool deny")
+	}
+}
+
+
 
 
 

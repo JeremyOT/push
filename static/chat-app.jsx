@@ -199,6 +199,26 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     };
   };
 
+  const isToolDenyChoice = (msg, messagesList) => {
+    if (!msg.is_user || msg.kind !== 'choice') return false;
+    const sid = msg.session_id ? String(msg.session_id).trim() : '';
+    for (let i = messagesList.length - 1; i >= 0; i--) {
+        const m = messagesList[i];
+        if (m.sessionId === sid && m.kind === 'question') {
+            const isToolPermission = m.title === 'ToolPermission' || (m.questions && m.questions.length > 0 && m.questions[0].header === 'Tool Permission');
+            if (isToolPermission && m.questions && m.questions[0] && m.questions[0].options) {
+                const opts = m.questions[0].options;
+                const lastIdxStr = String(opts.length);
+                if (msg.message === lastIdxStr || msg.message.startsWith(lastIdxStr + ':')) {
+                    return true;
+                }
+            }
+            break;
+        }
+    }
+    return false;
+  };
+
   const processMessage = (msg, setMessages, setThreads, isHistory = false) => {
     const mapped = mapMessage(msg);
     const sid = mapped.sessionId;
@@ -357,7 +377,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         updated: mapped.time,
                         lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
                         sessionPath: msg.session_path || t.sessionPath,
-                        status: msg.is_user ? 'working' : (mapped.status || t.status),
+                        status: msg.is_user ? (isToolDenyChoice(msg, messages) ? 'ready' : 'working') : (mapped.status || t.status),
                         active: nextActive,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
                         placeholder: false
@@ -369,7 +389,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     id: sid,
                     agent,
                     title: (title || 'CLI Agent').trim(),
-                    status: msg.is_user ? 'working' : (mapped.status || 'ready'),
+                    status: msg.is_user ? (isToolDenyChoice(msg, messages) ? 'ready' : 'working') : (mapped.status || 'ready'),
                     snippet: mapped.text || 'Active session',
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
@@ -611,6 +631,13 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                         decision: decision
                     });
                     setComposerValue('');
+                    return;
+                }
+                const isToolPermission = msg.title === 'ToolPermission' || q.header === 'Tool Permission';
+                if (isToolPermission && isLast) {
+                    setLocalDecisions((d) => ({ ...d, [msgId]: decision }));
+                    handleSend(decision, 'choice');
+                    setThreads(prev => prev.map(t => t.id === msg.sessionId ? { ...t, status: 'ready' } : t));
                     return;
                 }
             }
