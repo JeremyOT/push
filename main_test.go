@@ -2367,6 +2367,36 @@ func TestStaticAssetsContainsToolDenyLogic(t *testing.T) {
 	}
 }
 
+func TestParsePaneQuotaReached(t *testing.T) {
+	paneContent := `  agy --conversation=1a04bd89-d66c-4edb-abf2-1389d65bb502
+  agy -c
+
+      ▄▀▀▄        Antigravity CLI 1.0.12
+     ▀▀▀▀▀▀       jeremyot@gmail.com (Google AI Pro)
+    ▀▀▀▀▀▀▀▀      Gemini 3.5 Flash (Medium)
+
+● ListDir(/Users/jeremyot/dev/push/.git) (ctrl+o to expand)
+
+⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 3h26m46s.
+Error ID: 4dfb57824e6f4e2a8ad9fd292459c761
+`
+	msg, ok := parsePaneQuotaReached(paneContent)
+	if !ok {
+		t.Fatalf("Expected parsePaneQuotaReached to succeed, but it failed")
+	}
+
+	expectedMsg := "⚠️ **Individual quota reached.** Please upgrade your subscription to increase your limits. Resets in 3h26m46s.\n\n**Error ID:** 4dfb57824e6f4e2a8ad9fd292459c761"
+	if msg != expectedMsg {
+		t.Errorf("Expected message:\n%q\nGot:\n%q", expectedMsg, msg)
+	}
+
+	// Test negative case
+	_, okNegative := parsePaneQuotaReached("Some other regular output")
+	if okNegative {
+		t.Errorf("Expected parsePaneQuotaReached to fail on clean output, but it succeeded")
+	}
+}
+
 
 
 

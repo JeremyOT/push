@@ -1836,6 +1836,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 	lastStepID := ""
 	lastTmuxCheckTime := time.Time{}
 	lastSentQuestionText := ""
+	lastSentQuotaMsg := ""
 
 	getLatestLogFile := func(dir string) string {
 		if logFile != "" {
@@ -2147,7 +2148,7 @@ func runAgyScraper(logDir, logFile, backendURL, fallbackSessionID, sessionPath, 
 				}
 				if tmuxTarget != "" && time.Since(lastTmuxCheckTime) >= 500*time.Millisecond {
 					lastTmuxCheckTime = time.Now()
-					checkTmuxQuestion(tmuxTarget, &lastApprovalID, &lastSentQuestionText, sessionID, sessionPath, lastStepID, send)
+					checkTmuxQuestion(tmuxTarget, &lastApprovalID, &lastSentQuestionText, &lastSentQuotaMsg, sessionID, sessionPath, lastStepID, send)
 				}
 				time.Sleep(100 * time.Millisecond)
 				continue
@@ -2202,11 +2203,7 @@ func normalizeArgs(args []string) []string {
 	return normalized
 }
 
-func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *string, sessionID, sessionPath, lastStepID string, send func(Interaction)) {
-	if lastStepID == "" {
-		return
-	}
-
+func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText, lastSentQuotaMsg *string, sessionID, sessionPath, lastStepID string, send func(Interaction)) {
 	// Capture tmux pane contents
 	cmd := exec.Command("tmux", "capture-pane", "-t", tmuxTarget, "-p")
 	output, err := cmd.Output()
@@ -2214,8 +2211,37 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText *
 		return
 	}
 
+	paneStr := string(output)
+
+	// Check for quota reached
+	if quotaMsg, ok := parsePaneQuotaReached(paneStr); ok {
+		quotaID := "quota-exceeded-warning"
+		if *lastSentQuotaMsg != quotaMsg {
+			payload := Interaction{
+				Identifier:      quotaID,
+				Message:         "Individual quota reached",
+				DetailedMessage: quotaMsg,
+				Title:           "Quota Reached",
+				Agent:           "antigravity",
+				Kind:            "agent",
+				Status:          "r", // Ready status keeps the app in the ready state!
+				SessionID:       sessionID,
+				SessionPath:     sessionPath,
+				Quiet:           false, // Informational, show it
+			}
+			send(payload)
+			*lastSentQuotaMsg = quotaMsg
+		}
+	} else {
+		*lastSentQuotaMsg = ""
+	}
+
+	if lastStepID == "" {
+		return
+	}
+
 	// Parse pane content
-	question, options, hasQuestion, isToolPermission := parsePaneQuestion(string(output))
+	question, options, hasQuestion, isToolPermission := parsePaneQuestion(paneStr)
 
 	if hasQuestion {
 		questionID := lastStepID + "-question"
@@ -2426,6 +2452,39 @@ func parseOptionLine(line string) (int, string, bool) {
 	}
 	optionText := strings.TrimSpace(trimmed[dotIdx+1:])
 	return num, optionText, true
+}
+
+func parsePaneQuotaReached(paneContent string) (string, bool) {
+	lines := strings.Split(paneContent, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if strings.Contains(line, "Individual quota reached") {
+			idx := strings.Index(line, "Individual quota reached")
+			msg := line[idx:]
+			
+			// Replace standard prefix with markdown formatting
+			if strings.HasPrefix(msg, "Individual quota reached.") {
+				msg = "⚠️ **Individual quota reached.**" + strings.TrimPrefix(msg, "Individual quota reached.")
+			} else {
+				msg = "⚠️ " + msg
+			}
+
+			// Check if subsequent lines have "Error ID:"
+			for j := i + 1; j < len(lines); j++ {
+				subLine := strings.TrimSpace(lines[j])
+				if subLine == "" {
+					continue
+				}
+				if strings.Contains(subLine, "Error ID:") {
+					errID := strings.TrimSpace(strings.TrimPrefix(subLine, "Error ID:"))
+					msg += "\n\n**Error ID:** " + errID
+				}
+				break
+			}
+			return msg, true
+		}
+	}
+	return "", false
 }
 
 
