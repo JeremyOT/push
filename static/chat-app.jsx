@@ -613,9 +613,17 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
     if (msg && msg.kind === 'question' && msg.questions && msg.questions[0]) {
         const q = msg.questions[0];
         if (q.type === 'choice' && q.options) {
-            const optIdx = parseInt(decision, 10) - 1;
-            if (optIdx >= 0 && optIdx < q.options.length) {
-                const opt = q.options[optIdx];
+            let opt = q.options.find(o => String(o.value) === decision);
+            let optIdx = -1;
+            if (opt) {
+                optIdx = q.options.indexOf(opt);
+            } else {
+                optIdx = parseInt(decision, 10) - 1;
+                if (optIdx >= 0 && optIdx < q.options.length) {
+                    opt = q.options[optIdx];
+                }
+            }
+            if (opt) {
                 const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
                 const cleanLabel = optLabel.trim().toLowerCase();
                 const isLast = optIdx === q.options.length - 1;

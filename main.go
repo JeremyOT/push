@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1388,6 +1389,9 @@ func runHermesAgent(ctx context.Context, hermesURL, pushAddress, sessionID, sess
 					}
 					hReq.Header.Set("Content-Type", "application/json")
 					hReq.Header.Set("Accept", "text/event-stream")
+					if apiKey := os.Getenv("API_SERVER_KEY"); apiKey != "" {
+						hReq.Header.Set("Authorization", "Bearer "+apiKey)
+					}
 
 					hResp, err := http.DefaultClient.Do(hReq)
 					if err != nil {
@@ -2241,7 +2245,7 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText, 
 	}
 
 	// Parse pane content
-	question, options, hasQuestion, isToolPermission := parsePaneQuestion(paneStr)
+	question, options, optionValues, hasQuestion, isToolPermission := parsePaneQuestion(paneStr)
 
 	if hasQuestion {
 		questionID := lastStepID + "-question"
@@ -2249,6 +2253,7 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText, 
 		if *lastApprovalID != questionID || *lastSentQuestionText != question {
 			type UIOption struct {
 				Label string `json:"label"`
+				Value string `json:"value,omitempty"`
 			}
 			type UIQuestion struct {
 				Header   string     `json:"header"`
@@ -2261,8 +2266,12 @@ func checkTmuxQuestion(tmuxTarget string, lastApprovalID, lastSentQuestionText, 
 			}
 
 			var uiOptions []UIOption
-			for _, opt := range options {
-				uiOptions = append(uiOptions, UIOption{Label: opt})
+			for idx, opt := range options {
+				val := ""
+				if idx < len(optionValues) {
+					val = optionValues[idx]
+				}
+				uiOptions = append(uiOptions, UIOption{Label: opt, Value: val})
 			}
 
 			headerText := "Question"
@@ -2338,8 +2347,56 @@ func isSeparator(line string) bool {
 	return false
 }
 
-func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
+func parsePaneQuestion(paneContent string) (string, []string, []string, bool, bool) {
 	lines := strings.Split(paneContent, "\n")
+
+	// Check for bracket options first: e.g. [1] Good [2] Fine [3] Bad [0] Skip
+	bracketIdx := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
+		if strings.Contains(line, "[1]") && strings.Contains(line, "[2]") {
+			bracketIdx = i
+			break
+		}
+	}
+
+	if bracketIdx != -1 {
+		// Ensure the bracket line is near the bottom
+		nonEmptyBelow := 0
+		for i := bracketIdx + 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) != "" {
+				nonEmptyBelow++
+			}
+		}
+		if nonEmptyBelow <= 3 {
+			// Extract options using regex
+			var options []string
+			var optionValues []string
+			re := regexp.MustCompile(`\[(\d+)\]\s*([^\[\n\r]+)`)
+			matches := re.FindAllStringSubmatch(lines[bracketIdx], -1)
+			for _, match := range matches {
+				val := match[1]
+				lbl := strings.TrimSpace(match[2])
+				options = append(options, lbl)
+				optionValues = append(optionValues, val)
+			}
+
+			if len(options) > 0 {
+				// Parse question lines above the bracketIdx
+				var qLines []string
+				for j := bracketIdx - 1; j >= 0; j-- {
+					l := strings.TrimSpace(lines[j])
+					if isSeparator(lines[j]) || l == "" {
+						break
+					}
+					qLines = append([]string{l}, qLines...)
+				}
+				question := strings.Join(qLines, "\n")
+				return question, options, optionValues, true, false
+			}
+		}
+	}
+
 	// Find the last line that looks like a navigation prompt:
 	// We check for "Navigate" which is the common term in terminal prompts (e.g. "Navigate", "Select", "Skip" or just "Navigate").
 	navIdx := -1
@@ -2352,7 +2409,7 @@ func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 	}
 
 	if navIdx == -1 {
-		return "", nil, false, false
+		return "", nil, nil, false, false
 	}
 
 	// Ensure the navigation prompt is at the bottom of the visible terminal output
@@ -2363,7 +2420,7 @@ func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 		}
 	}
 	if nonEmptyBelow > 3 {
-		return "", nil, false, false
+		return "", nil, nil, false, false
 	}
 
 	var options []string
@@ -2429,9 +2486,9 @@ func parsePaneQuestion(paneContent string) (string, []string, bool, bool) {
 				isToolPermission = true
 			}
 		}
-		return question, options, true, isToolPermission
+		return question, options, nil, true, isToolPermission
 	}
-	return "", nil, false, false
+	return "", nil, nil, false, false
 }
 
 func parseOptionLine(line string) (int, string, bool) {

@@ -2094,7 +2094,7 @@ Question 1/1: Which database system do you prefer for small-to-medium scale Go p
 
   ↑/↓ Navigate · enter Select · esc Skip
 `
-	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
+	question, options, _, ok, isToolPermission := parsePaneQuestion(paneContent)
 	if !ok {
 		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
 	}
@@ -2137,7 +2137,7 @@ Reason: Commit changes to Git
 
   ↑/↓ Navigate · enter Select · esc Skip
 `
-	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
+	question, options, _, ok, isToolPermission := parsePaneQuestion(paneContent)
 	if !ok {
 		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
 	}
@@ -2181,7 +2181,7 @@ Allow access to this file?
   ↑/↓ Navigate
 esc to cancel
 `
-	question, options, ok, isToolPermission := parsePaneQuestion(paneContent)
+	question, options, _, ok, isToolPermission := parsePaneQuestion(paneContent)
 	if !ok {
 		t.Fatalf("Expected parsePaneQuestion to succeed, but it failed")
 	}
@@ -2394,6 +2394,47 @@ Error ID: 4dfb57824e6f4e2a8ad9fd292459c761
 	_, okNegative := parsePaneQuotaReached("Some other regular output")
 	if okNegative {
 		t.Errorf("Expected parsePaneQuotaReached to fail on clean output, but it succeeded")
+	}
+}
+
+func TestParsePaneCliExperience(t *testing.T) {
+	paneContent := `
+  How's the CLI experience so far? Help us improve:
+  [1] Good  [2] Fine  [3] Bad  [0] Skip
+
+? for shortcuts                                                                                                                                        Gemini 3.5 Flash (Medium)
+`
+	question, options, values, ok, isToolPermission := parsePaneQuestion(paneContent)
+	if !ok {
+		t.Fatalf("Expected parsePaneQuestion to succeed for CLI experience prompt, but it failed")
+	}
+	if isToolPermission {
+		t.Errorf("Expected isToolPermission to be false for CLI experience prompt")
+	}
+
+	expectedQuestion := "How's the CLI experience so far? Help us improve:"
+	if question != expectedQuestion {
+		t.Errorf("Expected question %q, got %q", expectedQuestion, question)
+	}
+
+	expectedOptions := []string{"Good", "Fine", "Bad", "Skip"}
+	if len(options) != len(expectedOptions) {
+		t.Fatalf("Expected %d options, got %d", len(expectedOptions), len(options))
+	}
+	for i, opt := range options {
+		if opt != expectedOptions[i] {
+			t.Errorf("Option %d: expected %q, got %q", i, expectedOptions[i], opt)
+		}
+	}
+
+	expectedValues := []string{"1", "2", "3", "0"}
+	if len(values) != len(expectedValues) {
+		t.Fatalf("Expected %d values, got %d", len(expectedValues), len(values))
+	}
+	for i, val := range values {
+		if val != expectedValues[i] {
+			t.Errorf("Value %d: expected %q, got %q", i, expectedValues[i], val)
+		}
 	}
 }
 

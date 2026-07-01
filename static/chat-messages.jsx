@@ -356,7 +356,7 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
                     {q.type === 'choice' && q.options?.map((opt, oIdx) => (
                       <button
                         key={oIdx}
-                        onClick={() => onDecide(String(oIdx + 1))}
+                        onClick={() => onDecide(opt.value || String(oIdx + 1))}
                         style={{
                           all: 'unset', cursor: 'pointer',
                           padding: '6px 12px', borderRadius: 8,
@@ -433,14 +433,24 @@ function QuestionCard({ msg, theme, decision, onDecide }) {
                   }
                   
                   if (q.type === 'choice' && q.options) {
-                    const idx = parseInt(mainDecision, 10) - 1;
-                    if (idx >= 0 && idx < q.options.length) {
-                      const opt = q.options[idx];
+                    let opt = q.options.find(o => String(o.value) === mainDecision);
+                    let optIdx = -1;
+                    if (opt) {
+                      optIdx = q.options.indexOf(opt);
+                    } else {
+                      const idx = parseInt(mainDecision, 10) - 1;
+                      if (idx >= 0 && idx < q.options.length) {
+                        opt = q.options[idx];
+                        optIdx = idx;
+                      }
+                    }
+                    if (opt) {
                       const optLabel = typeof opt === 'string' ? opt : (opt.label || '');
+                      const displayPrefix = opt.value || String(optIdx + 1);
                       if (writeInText) {
-                        decisionText = `${mainDecision}. ${optLabel} (${writeInText})`;
+                        decisionText = `${displayPrefix}. ${optLabel} (${writeInText})`;
                       } else {
-                        decisionText = `${mainDecision}. ${optLabel}`;
+                        decisionText = `${displayPrefix}. ${optLabel}`;
                       }
                     }
                   } else if (q.type === 'yesno') {
