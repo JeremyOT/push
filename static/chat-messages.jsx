@@ -78,6 +78,7 @@ function UserBubble({ msg, theme, onCopy }) {
               <Markdown text={msg.text} theme={theme} />
             </a>
         ) : <Markdown text={msg.text} theme={theme} />}
+        <ImageCarousel images={msg.images} theme={theme} />
       </div>
       <MessageMeta theme={theme} time={msg.time} align="right" />
     </div>
@@ -108,6 +109,7 @@ function AgentBubble({ msg, theme, onCopy }) {
                   <Markdown text={msg.text} theme={theme} />
               </a>
           ) : <Markdown text={msg.text} theme={theme} />}
+          <ImageCarousel images={msg.images} theme={theme} />
         </div>
       </div>
     </div>
@@ -493,4 +495,138 @@ function TypingBubble({ agent, theme }) {
   );
 }
 
-Object.assign(window, { UserBubble, AgentBubble, StatusNote, ToolBlock, ApprovalCard, QuestionCard, TypingBubble, MessageMeta });
+function ImageCarousel({ images, theme }) {
+  const [activeImage, setActiveImage] = React.useState(null);
+
+  if (!images || images.length === 0) return null;
+
+  return (
+    <>
+      <div className="image-carousel-container" style={{
+        display: 'flex',
+        gap: 12,
+        overflowX: 'auto',
+        padding: '10px 2px',
+        margin: '8px 0 2px 0',
+        width: '100%',
+        scrollbarWidth: 'thin',
+        WebkitOverflowScrolling: 'touch',
+      }}>
+        {images.map((img, idx) => (
+          <div
+            key={idx}
+            onClick={() => setActiveImage(img)}
+            style={{
+              flex: '0 0 auto',
+              position: 'relative',
+              borderRadius: 8,
+              overflow: 'hidden',
+              border: `1px solid ${theme.border}`,
+              background: theme.dark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.4)',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'scale(1.02)';
+              e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+            }}
+          >
+            <img
+              src={img.data}
+              alt={img.source}
+              style={{
+                display: 'block',
+                height: 140,
+                width: 'auto',
+                maxWidth: 240,
+                objectFit: 'cover',
+              }}
+            />
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'rgba(0, 0, 0, 0.6)',
+              color: '#fff',
+              fontSize: 10,
+              fontFamily: FONT_MONO,
+              padding: '4px 8px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              backdropFilter: 'blur(2px)',
+            }} title={img.source}>
+              {img.source.split('/').pop()}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {activeImage && (
+        <div
+          onClick={() => setActiveImage(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(11, 15, 25, 0.9)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            cursor: 'zoom-out',
+            animation: 'fadeIn 0.2s ease-out',
+          }}
+        >
+          <div style={{
+            position: 'relative',
+            maxWidth: '90%',
+            maxHeight: '90%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 12,
+          }}>
+            <img
+              src={activeImage.data}
+              alt={activeImage.source}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '80vh',
+                borderRadius: 12,
+                boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                objectFit: 'contain',
+              }}
+            />
+            <div style={{
+              color: '#fff',
+              fontFamily: FONT_MONO,
+              fontSize: 12,
+              background: 'rgba(0,0,0,0.7)',
+              padding: '6px 14px',
+              borderRadius: 20,
+              border: '1px solid rgba(255,255,255,0.15)',
+              textAlign: 'center',
+              wordBreak: 'break-all',
+              maxWidth: 500,
+            }}>
+              {activeImage.source}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+Object.assign(window, { UserBubble, AgentBubble, StatusNote, ToolBlock, ApprovalCard, QuestionCard, TypingBubble, MessageMeta, ImageCarousel });

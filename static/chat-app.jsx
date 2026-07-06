@@ -113,6 +113,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
       title: msg.title,
       sessionId: sid,
       sessionPath: msg.session_path,
+      images: msg.images,
     };
 
     if (msg.is_user) {

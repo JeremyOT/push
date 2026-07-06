@@ -2438,6 +2438,120 @@ func TestParsePaneCliExperience(t *testing.T) {
 	}
 }
 
+func TestImageScraper(t *testing.T) {
+	// Test extractCandidates
+	text := `Check out the docs here: http://example.com/logo.png and the icon at ./static/icon.png.
+Here is a Markdown image: ![Alt Text](img_markdown.jpg)
+And an HTML image: <img src="img_html.webp" width="100"/>
+Some non-image URL: http://example.com/file.pdf`
+
+	candidates := extractCandidates(text)
+	expectedCandidates := []string{
+		"http://example.com/logo.png",
+		"./static/icon.png",
+		"img_markdown.jpg",
+		"img_html.webp",
+	}
+
+	for _, expected := range expectedCandidates {
+		found := false
+		for _, c := range candidates {
+			if c == expected {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected candidate %q not found in %v", expected, candidates)
+		}
+	}
+
+	// Test processImageBytes with SVG
+	svgData := []byte("<svg>mock</svg>")
+	svgDataURL, err := processImageBytes(svgData, ".svg", "image/svg+xml")
+	if err != nil {
+		t.Fatalf("Failed to process SVG bytes: %v", err)
+	}
+	expectedSVG := "data:image/svg+xml;base64,PHN2Zz5tb2NrPC9zdmc+"
+	if svgDataURL != expectedSVG {
+		t.Errorf("Expected SVG data URL %q, got %q", expectedSVG, svgDataURL)
+	}
+
+	// Test processImageBytes with a small PNG image (no resize)
+	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("Failed to encode dummy PNG: %v", err)
+	}
+	pngBytes := buf.Bytes()
+	pngDataURL, err := processImageBytes(pngBytes, ".png", "image/png")
+	if err != nil {
+		t.Fatalf("Failed to process small PNG bytes: %v", err)
+	}
+	if !strings.HasPrefix(pngDataURL, "data:image/png;base64,") {
+		t.Errorf("Expected PNG data URL starting with 'data:image/png;base64,', got %q", pngDataURL)
+	}
+
+	// Test processImageBytes with a large image that needs resizing (e.g. 1200x800)
+	largeImg := image.NewRGBA(image.Rect(0, 0, 1200, 800))
+	var largeBuf bytes.Buffer
+	if err := png.Encode(&largeBuf, largeImg); err != nil {
+		t.Fatalf("Failed to encode dummy large PNG: %v", err)
+	}
+	largeBytes := largeBuf.Bytes()
+	// Mock a file size > 256KB to force decoding & resizing
+	largePaddedBytes := make([]byte, 300*1024)
+	copy(largePaddedBytes, largeBytes)
+
+	largeDataURL, err := processImageBytes(largePaddedBytes, ".png", "image/png")
+	if err != nil {
+		t.Fatalf("Failed to process large PNG bytes: %v", err)
+	}
+	if !strings.HasPrefix(largeDataURL, "data:image/png;base64,") {
+		t.Errorf("Expected resized PNG data URL starting with 'data:image/png;base64,', got %q", largeDataURL)
+	}
+
+	// Test DB saving and loading of interactions with images
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open memory db: %v", err)
+	}
+	defer db.Close()
+
+	if err := initDB(db); err != nil {
+		t.Fatalf("Failed to init DB: %v", err)
+	}
+
+	i := Interaction{
+		SessionID: "image-test-session",
+		Message:   "Behold! http://example.com/logo.png",
+		Images: []EmbeddedImage{
+			{Source: "http://example.com/logo.png", Data: "data:image/png;base64,abcdef"},
+		},
+	}
+
+	if err := saveInteraction(db, &i); err != nil {
+		t.Fatalf("Failed to save interaction with images: %v", err)
+	}
+
+	// Query from DB and check
+	var imagesStr string
+	err = db.QueryRow("SELECT images FROM interactions WHERE id = ?", i.ID).Scan(&imagesStr)
+	if err != nil {
+		t.Fatalf("Failed to query images column: %v", err)
+	}
+
+	var loadedImages []EmbeddedImage
+	if err := json.Unmarshal([]byte(imagesStr), &loadedImages); err != nil {
+		t.Fatalf("Failed to unmarshal images string: %v", err)
+	}
+
+	if len(loadedImages) != 1 || loadedImages[0].Source != i.Images[0].Source || loadedImages[0].Data != i.Images[0].Data {
+		t.Errorf("Loaded images mismatch. Expected %v, got %v", i.Images, loadedImages)
+	}
+}
+
+
 
 
 

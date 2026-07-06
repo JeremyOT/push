@@ -6,16 +6,20 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"image"
+	_ "image/gif"
+	_ "image/jpeg"
 	"image/png"
 	"io"
 	"io/fs"
 	"log"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -31,6 +35,7 @@ import (
 	"github.com/SherClockHolmes/webpush-go"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/image/draw"
+	_ "golang.org/x/image/webp"
 )
 
 //go:embed static/*
@@ -39,23 +44,29 @@ var staticFS embed.FS
 //go:embed gemini-agent
 var geminiAgentScript string
 
+type EmbeddedImage struct {
+	Source string `json:"source"`
+	Data   string `json:"data"` // Data URL: "data:image/png;base64,..."
+}
+
 type Interaction struct {
-	ID              int64     `json:"id"`
-	Identifier      string    `json:"identifier,omitempty"`
-	Title           string    `json:"title"`
-	Message         string    `json:"message"`
-	DetailedMessage string    `json:"detailed_message"`
-	Link            string    `json:"link"`
-	IsUser          bool      `json:"is_user"`
-	Quiet           bool      `json:"quiet"`
-	Timestamp       time.Time `json:"timestamp"`
-	Update          bool      `json:"update,omitempty"`
-	Replace         bool      `json:"replace,omitempty"`
-	Status          string    `json:"status,omitempty"`
-	Kind            string    `json:"kind,omitempty"`
-	Agent           string    `json:"agent,omitempty"`
-	SessionID       string    `json:"session_id,omitempty"`
-	SessionPath     string    `json:"session_path,omitempty"`
+	ID              int64           `json:"id"`
+	Identifier      string          `json:"identifier,omitempty"`
+	Title           string          `json:"title"`
+	Message         string          `json:"message"`
+	DetailedMessage string          `json:"detailed_message"`
+	Link            string          `json:"link"`
+	IsUser          bool            `json:"is_user"`
+	Quiet           bool            `json:"quiet"`
+	Timestamp       time.Time       `json:"timestamp"`
+	Update          bool            `json:"update,omitempty"`
+	Replace         bool            `json:"replace,omitempty"`
+	Status          string          `json:"status,omitempty"`
+	Kind            string          `json:"kind,omitempty"`
+	Agent           string          `json:"agent,omitempty"`
+	SessionID       string          `json:"session_id,omitempty"`
+	SessionPath     string          `json:"session_path,omitempty"`
+	Images          []EmbeddedImage `json:"images,omitempty"`
 }
 
 type AgyToolCall struct {
@@ -472,7 +483,8 @@ func initDB(db *sql.DB) error {
 			kind TEXT DEFAULT '',
 			agent TEXT DEFAULT '',
 			session_id TEXT DEFAULT '',
-			session_path TEXT DEFAULT ''
+			session_path TEXT DEFAULT '',
+			images TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS subscriptions (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -504,6 +516,7 @@ func initDB(db *sql.DB) error {
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN agent TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN session_id TEXT DEFAULT ''")
 	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN session_path TEXT DEFAULT ''")
+	_, _ = db.Exec("ALTER TABLE interactions ADD COLUMN images TEXT DEFAULT ''")
 
 	return nil
 }
@@ -557,11 +570,11 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 
 			if latestPerSession {
 				// Fetch the latest interaction for each session_id
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path FROM interactions WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY session_id) ORDER BY id ASC"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path, images FROM interactions WHERE id IN (SELECT MAX(id) FROM interactions GROUP BY session_id) ORDER BY id ASC"
 				rows, err = db.Query(query)
 			} else if after := r.URL.Query().Get("after"); after != "" {
 				// Polling for new messages
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path FROM interactions WHERE id > ?"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path, images FROM interactions WHERE id > ?"
 				args := []interface{}{after}
 				if sessionID != "" {
 					query += " AND session_id = ?"
@@ -572,7 +585,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			} else if before := r.URL.Query().Get("before"); before != "" {
 				// Loading history (fetching older messages)
 				isHistory = true
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path FROM interactions WHERE id < ?"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path, images FROM interactions WHERE id < ?"
 				args := []interface{}{before}
 				if sessionID != "" {
 					query += " AND session_id = ?"
@@ -584,7 +597,7 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			} else {
 				// Initial load (latest messages)
 				isHistory = true
-				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path FROM interactions"
+				query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path, images FROM interactions"
 				var args []interface{}
 				if sessionID != "" {
 					query += " WHERE session_id = ?"
@@ -604,9 +617,13 @@ func handleInteractions(db *sql.DB) http.HandlerFunc {
 			var interactions []Interaction
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Kind, &i.Agent, &i.SessionID, &i.SessionPath); err != nil {
+				var imagesStr string
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Kind, &i.Agent, &i.SessionID, &i.SessionPath, &imagesStr); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
+				}
+				if imagesStr != "" {
+					_ = json.Unmarshal([]byte(imagesStr), &i.Images)
 				}
 				interactions = append(interactions, i)
 			}
@@ -660,6 +677,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	if i.SessionID != "" && (i.Agent == "" || i.SessionPath == "" || i.Title == "" || i.Title == "Gemini" || i.Title == "Antigravity" || i.Title == "Remote" || i.Title == "CLI Agent") {
 		fillMissingMetadata(db, i)
 	}
+	scrapeImages(i)
 	if i.Identifier != "" {
 		tx, err := db.Begin()
 		if err != nil {
@@ -691,9 +709,13 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		var existingSessionID string
 		var existingSessionPath string
 		var existingIsUser bool
-		err = tx.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet FROM interactions WHERE identifier = ? AND (session_id = ? OR ? = '')", i.Identifier, i.SessionID, i.SessionID).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet)
+		var existingImagesStr string
+		err = tx.QueryRow("SELECT id, timestamp, title, message, detailed_message, link, status, kind, agent, session_id, session_path, is_user, quiet, images FROM interactions WHERE identifier = ? AND (session_id = ? OR ? = '')", i.Identifier, i.SessionID, i.SessionID).Scan(&id, &timestamp, &existingTitle, &existingMessage, &existingDetailedMessage, &existingLink, &existingStatus, &existingKind, &existingAgent, &existingSessionID, &existingSessionPath, &existingIsUser, &existingQuiet, &existingImagesStr)
 		if err == nil {
 			// Exists, update it
+			if existingImagesStr != "" && len(i.Images) == 0 {
+				_ = json.Unmarshal([]byte(existingImagesStr), &i.Images)
+			}
 			if i.Title == "" {
 				i.Title = existingTitle
 			}
@@ -727,7 +749,14 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 					i.DetailedMessage = mergeStrings(existingDetailedMessage, i.DetailedMessage)
 				}
 			}
-			_, err = tx.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, id)
+			scrapeImages(i)
+			var imagesStr string
+			if len(i.Images) > 0 {
+				if bytes, err := json.Marshal(i.Images); err == nil {
+					imagesStr = string(bytes)
+				}
+			}
+			_, err = tx.Exec("UPDATE interactions SET title = ?, message = ?, detailed_message = ?, link = ?, is_user = ?, quiet = ?, status = ?, kind = ?, agent = ?, session_id = ?, session_path = ?, images = ? WHERE id = ?", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, imagesStr, id)
 			if err != nil {
 				return err
 			}
@@ -746,7 +775,13 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			i.Update = true
 		} else if err == sql.ErrNoRows {
 			// Not found, insert new
-			res, err := tx.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
+			var imagesStr string
+			if len(i.Images) > 0 {
+				if bytes, err := json.Marshal(i.Images); err == nil {
+					imagesStr = string(bytes)
+				}
+			}
+			res, err := tx.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", i.Identifier, i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, imagesStr)
 			if err != nil {
 				return err
 			}
@@ -767,8 +802,13 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 			return err
 		}
 	} else {
-
-		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath)
+		var imagesStr string
+		if len(i.Images) > 0 {
+			if bytes, err := json.Marshal(i.Images); err == nil {
+				imagesStr = string(bytes)
+			}
+		}
+		res, err := db.Exec("INSERT INTO interactions (identifier, title, message, detailed_message, link, is_user, quiet, status, kind, agent, session_id, session_path, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "", i.Title, i.Message, i.DetailedMessage, i.Link, i.IsUser, i.Quiet, i.Status, i.Kind, i.Agent, i.SessionID, i.SessionPath, imagesStr)
 		if err != nil {
 			return err
 		}
@@ -1581,7 +1621,7 @@ func handleService(db *sql.DB) http.HandlerFunc {
 		flusher.Flush()
 
 		sentIds := make(map[int64]bool)
-		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path FROM interactions WHERE "
+		query := "SELECT id, identifier, title, message, detailed_message, link, is_user, quiet, timestamp, status, kind, agent, session_id, session_path, images FROM interactions WHERE "
 		var args []interface{}
 		if startID > 0 {
 			query += "id > ?"
@@ -1601,7 +1641,11 @@ func handleService(db *sql.DB) http.HandlerFunc {
 			defer rows.Close()
 			for rows.Next() {
 				var i Interaction
-				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Kind, &i.Agent, &i.SessionID, &i.SessionPath); err == nil {
+				var imagesStr string
+				if err := rows.Scan(&i.ID, &i.Identifier, &i.Title, &i.Message, &i.DetailedMessage, &i.Link, &i.IsUser, &i.Quiet, &i.Timestamp, &i.Status, &i.Kind, &i.Agent, &i.SessionID, &i.SessionPath, &imagesStr); err == nil {
+					if imagesStr != "" {
+						_ = json.Unmarshal([]byte(imagesStr), &i.Images)
+					}
 					sentIds[i.ID] = true
 					json.NewEncoder(w).Encode(i)
 					flusher.Flush()
@@ -2542,6 +2586,215 @@ func parsePaneQuotaReached(paneContent string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+var mimeTypes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
+	".svg":  "image/svg+xml",
+}
+
+var httpClient = &http.Client{
+	Timeout: 3 * time.Second,
+}
+
+func extractCandidates(text string) []string {
+	var candidates []string
+	seen := make(map[string]bool)
+
+	textCleaned := text
+	textCleaned = strings.ReplaceAll(textCleaned, "](", " ")
+	textCleaned = strings.ReplaceAll(textCleaned, "src=", " ")
+	textCleaned = strings.ReplaceAll(textCleaned, "href=", " ")
+	textCleaned = strings.ReplaceAll(textCleaned, "url(", " ")
+
+	words := strings.Fields(textCleaned)
+	for _, word := range words {
+		cleaned := strings.TrimLeft(word, "\"'([{<*`")
+		cleaned = strings.TrimRight(cleaned, "\"')]}>,;!?.:*`")
+
+		if cleaned == "" {
+			continue
+		}
+
+		if strings.HasPrefix(cleaned, "http://") || strings.HasPrefix(cleaned, "https://") {
+			u, err := url.Parse(cleaned)
+			if err == nil {
+				ext := strings.ToLower(filepath.Ext(u.Path))
+				if _, ok := mimeTypes[ext]; ok {
+					if !seen[cleaned] {
+						seen[cleaned] = true
+						candidates = append(candidates, cleaned)
+					}
+				}
+			}
+		} else {
+			ext := strings.ToLower(filepath.Ext(cleaned))
+			if _, ok := mimeTypes[ext]; ok {
+				if !seen[cleaned] {
+					seen[cleaned] = true
+					candidates = append(candidates, cleaned)
+				}
+			}
+		}
+	}
+	return candidates
+}
+
+func processImageBytes(data []byte, ext string, mimeType string) (string, error) {
+	if mimeType == "image/svg+xml" || ext == ".svg" {
+		encoded := base64.StdEncoding.EncodeToString(data)
+		return "data:image/svg+xml;base64," + encoded, nil
+	}
+
+	if len(data) <= 256*1024 {
+		encoded := base64.StdEncoding.EncodeToString(data)
+		if mimeType == "" {
+			mimeType = mimeTypes[ext]
+		}
+		if mimeType == "" {
+			mimeType = "image/png"
+		}
+		return "data:" + mimeType + ";base64," + encoded, nil
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", err
+	}
+
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	maxDim := 1024
+
+	var resizedImg image.Image = img
+	if w > maxDim || h > maxDim {
+		var newW, newH int
+		if w > h {
+			newW = maxDim
+			newH = (h * maxDim) / w
+		} else {
+			newH = maxDim
+			newW = (w * maxDim) / h
+		}
+		dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+		draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
+		resizedImg = dst
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, resizedImg); err != nil {
+		return "", err
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
+	return "data:image/png;base64," + encoded, nil
+}
+
+func scrapeImages(i *Interaction) {
+	candidates := extractCandidates(i.Message)
+	if i.DetailedMessage != "" {
+		candidates = append(candidates, extractCandidates(i.DetailedMessage)...)
+	}
+
+	if len(candidates) == 0 {
+		return
+	}
+
+	existingMap := make(map[string]string)
+	for _, img := range i.Images {
+		existingMap[img.Source] = img.Data
+	}
+
+	var newImages []EmbeddedImage
+	seenCandidate := make(map[string]bool)
+
+	for _, candidate := range candidates {
+		if seenCandidate[candidate] {
+			continue
+		}
+		seenCandidate[candidate] = true
+
+		if data, ok := existingMap[candidate]; ok {
+			newImages = append(newImages, EmbeddedImage{
+				Source: candidate,
+				Data:   data,
+			})
+			continue
+		}
+
+		var data []byte
+		var mimeType string
+		var ext string
+
+		if strings.HasPrefix(candidate, "http://") || strings.HasPrefix(candidate, "https://") {
+			resp, err := httpClient.Get(candidate)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				continue
+			}
+			data, err = io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
+			resp.Body.Close()
+			if err != nil {
+				continue
+			}
+			mimeType = resp.Header.Get("Content-Type")
+			u, _ := url.Parse(candidate)
+			ext = strings.ToLower(filepath.Ext(u.Path))
+		} else {
+			path := candidate
+			if !filepath.IsAbs(path) {
+				if i.SessionPath != "" {
+					p := filepath.Join(i.SessionPath, candidate)
+					if _, err := os.Stat(p); err == nil {
+						path = p
+					}
+				}
+				if _, err := os.Stat(path); err != nil {
+					if cwd, err := os.Getwd(); err == nil {
+						p := filepath.Join(cwd, candidate)
+						if _, err := os.Stat(p); err == nil {
+							path = p
+						}
+					}
+				}
+			}
+
+			info, err := os.Stat(path)
+			if err != nil || !info.Mode().IsRegular() {
+				continue
+			}
+			if info.Size() > 20*1024*1024 {
+				continue
+			}
+			data, err = os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			ext = strings.ToLower(filepath.Ext(path))
+			mimeType = mimeTypes[ext]
+		}
+
+		dataURL, err := processImageBytes(data, ext, mimeType)
+		if err != nil {
+			log.Printf("Failed to process image %s: %v", candidate, err)
+			continue
+		}
+
+		newImages = append(newImages, EmbeddedImage{
+			Source: candidate,
+			Data:   dataURL,
+		})
+	}
+
+	i.Images = newImages
 }
 
 
