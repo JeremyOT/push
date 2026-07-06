@@ -2727,60 +2727,49 @@ func scrapeImages(i *Interaction) {
 			continue
 		}
 
+		if strings.HasPrefix(candidate, "http://") || strings.HasPrefix(candidate, "https://") {
+			newImages = append(newImages, EmbeddedImage{
+				Source: candidate,
+				Data:   candidate,
+			})
+			continue
+		}
+
 		var data []byte
 		var mimeType string
 		var ext string
 
-		if strings.HasPrefix(candidate, "http://") || strings.HasPrefix(candidate, "https://") {
-			resp, err := httpClient.Get(candidate)
-			if err != nil {
-				continue
+		path := candidate
+		if !filepath.IsAbs(path) {
+			if i.SessionPath != "" {
+				p := filepath.Join(i.SessionPath, candidate)
+				if _, err := os.Stat(p); err == nil {
+					path = p
+				}
 			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				continue
-			}
-			data, err = io.ReadAll(io.LimitReader(resp.Body, 20*1024*1024))
-			resp.Body.Close()
-			if err != nil {
-				continue
-			}
-			mimeType = resp.Header.Get("Content-Type")
-			u, _ := url.Parse(candidate)
-			ext = strings.ToLower(filepath.Ext(u.Path))
-		} else {
-			path := candidate
-			if !filepath.IsAbs(path) {
-				if i.SessionPath != "" {
-					p := filepath.Join(i.SessionPath, candidate)
+			if _, err := os.Stat(path); err != nil {
+				if cwd, err := os.Getwd(); err == nil {
+					p := filepath.Join(cwd, candidate)
 					if _, err := os.Stat(p); err == nil {
 						path = p
 					}
 				}
-				if _, err := os.Stat(path); err != nil {
-					if cwd, err := os.Getwd(); err == nil {
-						p := filepath.Join(cwd, candidate)
-						if _, err := os.Stat(p); err == nil {
-							path = p
-						}
-					}
-				}
 			}
-
-			info, err := os.Stat(path)
-			if err != nil || !info.Mode().IsRegular() {
-				continue
-			}
-			if info.Size() > 20*1024*1024 {
-				continue
-			}
-			data, err = os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			ext = strings.ToLower(filepath.Ext(path))
-			mimeType = mimeTypes[ext]
 		}
+
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		if info.Size() > 20*1024*1024 {
+			continue
+		}
+		data, err = os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		ext = strings.ToLower(filepath.Ext(path))
+		mimeType = mimeTypes[ext]
 
 		dataURL, err := processImageBytes(data, ext, mimeType)
 		if err != nil {
