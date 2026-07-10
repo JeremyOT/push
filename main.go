@@ -3111,6 +3111,9 @@ func processPendingSignalMessages(db *sql.DB, server, from string) error {
 		if sender == "" || env.DataMessage == nil || env.DataMessage.Message == "" {
 			continue
 		}
+		if sender != *signalAddress {
+			continue
+		}
 
 		signalSessionMu.Lock()
 		setSignalRecipient(db, sender)

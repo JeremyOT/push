@@ -2578,8 +2578,8 @@ func TestSignalIntegration(t *testing.T) {
 				w.Write([]byte(`[
 					{
 						"envelope": {
-							"source": "+1999999999",
-							"sourceNumber": "+1999999999",
+							"source": "+1234567890",
+							"sourceNumber": "+1234567890",
 							"timestamp": 1234567890,
 							"dataMessage": {
 								"message": "Hello Agent",
