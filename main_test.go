@@ -12,9 +12,11 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2548,6 +2550,221 @@ Some non-image URL: http://example.com/file.pdf`
 
 	if len(loadedImages) != 1 || loadedImages[0].Source != i.Images[0].Source || loadedImages[0].Data != i.Images[0].Data {
 		t.Errorf("Loaded images mismatch. Expected %v, got %v", i.Images, loadedImages)
+	}
+}
+
+func TestSignalIntegration(t *testing.T) {
+	// Set up mock Signal CLI daemon REST API server
+	var receivedRequests []string
+	var mu sync.Mutex
+
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		receivedRequests = append(receivedRequests, fmt.Sprintf("%s %s", r.Method, r.URL.Path))
+		mu.Unlock()
+
+		if r.URL.Path == "/v1/receive/+1234567890" {
+			mu.Lock()
+			pollCount := 0
+			for _, req := range receivedRequests {
+				if req == "GET /v1/receive/+1234567890" {
+					pollCount++
+				}
+			}
+			mu.Unlock()
+
+			if pollCount == 1 {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`[
+					{
+						"envelope": {
+							"source": "+1999999999",
+							"sourceNumber": "+1999999999",
+							"timestamp": 1234567890,
+							"dataMessage": {
+								"message": "Hello Agent",
+								"timestamp": 1234567890
+							}
+						}
+					}
+				]`))
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`[]`))
+			}
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockServer.Close()
+
+	u, _ := url.Parse(mockServer.URL)
+	mockHostPort := u.Host
+	signalServer = &mockHostPort
+	addr := "+1234567890"
+	signalAddress = &addr
+
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	var err error
+	sessID := "test-signal-sess"
+	iCmd := Interaction{
+		SessionID: sessID,
+		Title:     "TestCLI",
+		Message:   "/signal",
+		IsUser:    true,
+	}
+
+	sessionsMu.Lock()
+	activeSessions[sessID] = 1
+	sessionsMu.Unlock()
+	defer func() {
+		sessionsMu.Lock()
+		delete(activeSessions, sessID)
+		sessionsMu.Unlock()
+	}()
+
+	err = saveInteraction(db, &iCmd)
+	if err != nil {
+		t.Fatalf("Failed to save /signal command: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	signalSessionMu.Lock()
+	currActive := activeSignalSessionID
+	signalSessionMu.Unlock()
+	if currActive != sessID {
+		t.Errorf("Expected active Signal session to be %s, got %s", sessID, currActive)
+	}
+
+	err = processPendingSignalMessages(db, *signalServer, *signalAddress)
+	if err != nil {
+		t.Fatalf("processPendingSignalMessages failed: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	reqs := make([]string, len(receivedRequests))
+	copy(reqs, receivedRequests)
+	mu.Unlock()
+
+	hasReaction := false
+	hasTyping := false
+	for _, req := range reqs {
+		if strings.Contains(req, "POST /v1/reactions") {
+			hasReaction = true
+		}
+		if strings.Contains(req, "POST /v1/typing-indicator") {
+			hasTyping = true
+		}
+	}
+
+	if !hasReaction {
+		t.Error("Expected 👀 reaction POST to have been sent to mock Signal server")
+	}
+	if !hasTyping {
+		t.Error("Expected typing indicator POST to have been sent to mock Signal server")
+	}
+
+	var dbCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM interactions WHERE session_id = ? AND message = 'Hello Agent' AND is_user = 1", sessID).Scan(&dbCount)
+	if err != nil {
+		t.Fatalf("Failed to count DB messages: %v", err)
+	}
+	if dbCount != 1 {
+		t.Errorf("Expected 1 stored user message from Signal, got %d", dbCount)
+	}
+
+	iResp := Interaction{
+		SessionID: sessID,
+		Kind:      "agent",
+		Message:   "Final Agent Response Text",
+		IsUser:    false,
+	}
+	err = saveInteraction(db, &iResp)
+	if err != nil {
+		t.Fatalf("Failed to save final response message: %v", err)
+	}
+
+	iReady := Interaction{
+		SessionID: sessID,
+		Kind:      "status",
+		Status:    "r",
+		Message:   "Ready",
+		IsUser:    false,
+	}
+
+	mu.Lock()
+	receivedRequests = nil
+	mu.Unlock()
+
+	err = saveInteraction(db, &iReady)
+	if err != nil {
+		t.Fatalf("Failed to save ready status: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	postReadyReqs := make([]string, len(receivedRequests))
+	copy(postReadyReqs, receivedRequests)
+	mu.Unlock()
+
+	hasDeleteReaction := false
+	hasCheckReaction := false
+	hasStopTyping := false
+	hasSendMsg := false
+
+	for _, req := range postReadyReqs {
+		if strings.Contains(req, "DELETE /v1/reactions") {
+			hasDeleteReaction = true
+		}
+		if strings.Contains(req, "POST /v1/reactions") {
+			hasCheckReaction = true
+		}
+		if strings.Contains(req, "DELETE /v1/typing-indicator") {
+			hasStopTyping = true
+		}
+		if strings.Contains(req, "POST /v2/send") {
+			hasSendMsg = true
+		}
+	}
+
+	if !hasDeleteReaction {
+		t.Error("Expected DELETE reaction to remove 👀")
+	}
+	if !hasCheckReaction {
+		t.Error("Expected POST reaction to add ✅")
+	}
+	if !hasStopTyping {
+		t.Error("Expected DELETE typing-indicator to stop typing")
+	}
+	if !hasSendMsg {
+		t.Error("Expected POST /v2/send to deliver final response")
+	}
+
+	iStop := Interaction{
+		SessionID: sessID,
+		Message:   "/signal stop",
+		IsUser:    true,
+	}
+	err = saveInteraction(db, &iStop)
+	if err != nil {
+		t.Fatalf("Failed to save '/signal stop' command: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	signalSessionMu.Lock()
+	finalActive := activeSignalSessionID
+	signalSessionMu.Unlock()
+	if finalActive != "" {
+		t.Errorf("Expected active Signal session to be cleared, got %s", finalActive)
 	}
 }
 

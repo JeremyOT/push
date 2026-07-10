@@ -18,6 +18,8 @@ The application has been updated to support a client mode for sending messages d
 - `-application-title`: Custom title for the web application (replaces "Push").
 - `-icon`: Path to a PNG file to replace the application's icons (automatically resizes to required sizes).
 - `-static-output`: Output directory to export the fully rendered static web app content.
+- `-signal-server`: Host and port for the Signal CLI REST API daemon (e.g. 127.0.0.1:8742).
+- `-signal-address`: Registered phone number for the Signal bot (e.g. +1234567890).
 - `-interactive`: Enable interactive mode to allow sending messages from the web app.
 - `-cli-service`: Enable interactive CLI mode (modes: `text`, `json`, `jsonr`, `tmux`).
     - `text`: Standard text input/formatted output.
@@ -40,6 +42,7 @@ The following commands can be sent from the web UI to an active agent session:
 - `/clear`: Clear the agent's context.
 - `/memory reload`: Reload memory and instructions.
 - `/compress`: Compress conversation history.
+- `/signal`: Connect or disconnect the current session to Signal (parameters: 'stop' to disable, or '+phone' to override the active recipient).
 
 ## API Endpoints
 - `GET /interactions`: Fetch messages (supports `after`, `before`, and `limit` parameters).
@@ -125,3 +128,4 @@ go build -ldflags="-w -s" -o push main.go
 - Implemented real-time detection of token quota exceeded errors in the tmux pane scraper (`main.go`). When an "Individual quota reached" message is parsed, it sends a formatted informational markdown warning (containing any associated "Error ID:") to the frontend as an agent message with status `r` (ready), which prevents the application from blocking user inputs and keeps the session in the ready state. Added the `TestParsePaneQuotaReached` unit test to verify parsing.
 - Added support for parsing and responding to bracket-based CLI experience feedback prompts (e.g. `[1] Good  [2] Fine  [3] Bad  [0] Skip`) in the tmux pane scraper (`main.go`). Updated `parsePaneQuestion` to return option labels alongside their corresponding prompt keys, updated `checkTmuxQuestion` to include custom values in `UIOption` payloads, updated the frontend (`chat-app.jsx` and `chat-messages.jsx`) to map button clicks to these custom values, and added the `TestParsePaneCliExperience` unit test.
 - Implemented automatic image scraping, downscaling, embedding, and horizontal carousel rendering. When a message (message or detailed_message) contains local image file names, relative/absolute paths, or public URLs (e.g. in text, markdown, or HTML format), the system extracts them. For public URLs, the database stores the direct URL without embedding the payload, allowing the client to load and render the image directly. For local images, the backend reads, downscales (preserving aspect ratio, up to 1024px maximum dimension if >256KB), and embeds them as base64 PNG data URLs in the database. Added support in the frontend React application (`chat-app.jsx` and `chat-messages.jsx`) to map these images and render them at the end of user and agent messages in a horizontally scrollable carousel. Integrated a lightbox/modal viewer to view full resolution images on click. Added the `TestImageScraper` unit test.
+- Implemented Signal CLI REST API daemon integration. Added `--signal-server` and `--signal-address` CLI flags to enable the integration. Added a `/signal` command to activate a push session to respond to Signal messages (the active session sends an initial status confirmation message to the recipient). Implemented background polling of the daemon receive endpoint, parsing incoming message envelopes, and storing the sender phone number in config. When a message is received, push reacts with a "looking" emoji (👀), starts the typing indicator, and forwards the message to the active session database. When the agent finishes responding (returning to the ready state), it deletes the "👀" reaction, reacts with a checkmark (✅), stops the typing indicator, and sends the final agent message back to Signal. Added autocomplete suggestions to the UI CommandPalette and added the `TestSignalIntegration` unit test.

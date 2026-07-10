@@ -99,6 +99,16 @@ var customIcons = make(map[string][]byte)
 var activeSessions = make(map[string]int)
 var sessionsMu sync.Mutex
 
+var (
+	signalServer              *string
+	signalAddress             *string
+	signalSessionMu           sync.Mutex
+	activeSignalSessionID     string
+	lastSignalMsgTimestamp    int64
+	lastSignalMsgSender       string
+	isWaitingForAgentResponse bool
+)
+
 type Broadcaster struct {
 	subscribers map[chan Interaction]bool
 	mu          sync.Mutex
@@ -143,6 +153,8 @@ func main() {
 	address := flag.String("address", "127.0.0.1:8089", "Address and port to listen on (e.g., 127.0.0.1:8089)")
 	dbPath := flag.String("database", "./push.sqlite", "DATABASE")
 	hostname := flag.String("hostname", defaultHostname, "HOSTNAME for push notifications")
+	signalServer = flag.String("signal-server", "", "Signal CLI REST API server host:port (e.g., 127.0.0.1:8742)")
+	signalAddress = flag.String("signal-address", "", "Phone number registered with signal-cli (e.g., +1234567890)")
 	resetVapid := flag.Bool("reset-vapid", false, "Reset VAPID keys")
 	message := flag.String("m", "", "Message to send (client mode)")
 	title := flag.String("t", "", "Title of the message (client mode)")
@@ -276,6 +288,12 @@ func main() {
 
 	log.Printf("Server listening on %s", *address)
 	log.Printf("Server hostname: %s", serverHostname)
+
+	if *signalServer != "" && *signalAddress != "" {
+		log.Printf("Starting Signal polling for address %s on server %s", *signalAddress, *signalServer)
+		go pollSignalMessages(db, *signalServer, *signalAddress)
+	}
+
 	log.Fatal(http.ListenAndServe(*address, nil))
 }
 
@@ -825,6 +843,11 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		}
 	}
 
+	// Handle /signal command
+	if i.IsUser && i.SessionID != "" && strings.HasPrefix(i.Message, "/signal") {
+		handleSignalCommand(db, i)
+	}
+
 	// Handle global /new-agent command
 	if i.IsUser && i.SessionID == "" && strings.HasPrefix(i.Message, "/new-agent") {
 		go func() {
@@ -872,6 +895,10 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 				})
 			}
 		}()
+	}
+
+	if i.Kind == "status" && i.Status == "r" && i.SessionID != "" {
+		handleSignalReadyState(db, i.SessionID)
 	}
 
 	// Broadcast for streaming to all clients
@@ -2784,6 +2811,329 @@ func scrapeImages(i *Interaction) {
 	}
 
 	i.Images = newImages
+}
+
+// Helpers for Signal integration
+
+func getSignalRecipient(db *sql.DB) string {
+	var val string
+	row := db.QueryRow("SELECT value FROM config WHERE key = 'signal_recipient'")
+	if err := row.Scan(&val); err == nil {
+		return val
+	}
+	return ""
+}
+
+func setSignalRecipient(db *sql.DB, num string) {
+	_, _ = db.Exec("INSERT INTO config (key, value) VALUES ('signal_recipient', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", num)
+}
+
+func handleSignalCommand(db *sql.DB, i *Interaction) {
+	go func() {
+		cmdStr := strings.TrimSpace(i.Message)
+		args := strings.Fields(cmdStr)
+		if len(args) > 1 && args[1] == "stop" {
+			signalSessionMu.Lock()
+			if activeSignalSessionID == i.SessionID {
+				activeSignalSessionID = ""
+			}
+			signalSessionMu.Unlock()
+
+			broadcaster.Broadcast(Interaction{
+				SessionID: i.SessionID,
+				Title:     "System",
+				Message:   "Signal control stopped for this session.",
+				Status:    "r",
+				Agent:     "remote",
+				Timestamp: time.Now().UTC(),
+			})
+			return
+		}
+
+		// Activate session
+		signalSessionMu.Lock()
+		activeSignalSessionID = i.SessionID
+		if len(args) > 1 && strings.HasPrefix(args[1], "+") {
+			setSignalRecipient(db, args[1])
+		}
+		recipient := getSignalRecipient(db)
+		signalSessionMu.Unlock()
+
+		sessionName := i.Title
+		if sessionName == "" {
+			sessionName = i.SessionID
+		}
+
+		msgText := fmt.Sprintf("Session %s is now responding to messages on signal", sessionName)
+		var statusText string
+		if recipient != "" {
+			if err := sendSignalMessage(*signalServer, *signalAddress, recipient, msgText); err != nil {
+				statusText = fmt.Sprintf("Signal session activated, but failed to send message to %s: %v", recipient, err)
+			} else {
+				statusText = fmt.Sprintf("Signal session activated. Message sent to %s", recipient)
+			}
+		} else {
+			statusText = "Signal session activated. Waiting for incoming Signal messages to establish recipient."
+		}
+
+		broadcaster.Broadcast(Interaction{
+			SessionID: i.SessionID,
+			Title:     "System",
+			Message:   statusText,
+			Status:    "r",
+			Agent:     "remote",
+			Timestamp: time.Now().UTC(),
+		})
+	}()
+}
+
+func handleSignalReadyState(db *sql.DB, sessionID string) {
+	signalSessionMu.Lock()
+	if activeSignalSessionID == "" || activeSignalSessionID != sessionID {
+		signalSessionMu.Unlock()
+		return
+	}
+	if !isWaitingForAgentResponse {
+		signalSessionMu.Unlock()
+		return
+	}
+
+	isWaitingForAgentResponse = false
+	sender := lastSignalMsgSender
+	timestamp := lastSignalMsgTimestamp
+	signalSessionMu.Unlock()
+
+	var msgText string
+	var detailedMsg string
+	err := db.QueryRow("SELECT message, detailed_message FROM interactions WHERE session_id = ? AND is_user = 0 AND kind = 'agent' ORDER BY id DESC LIMIT 1", sessionID).Scan(&msgText, &detailedMsg)
+	if err != nil {
+		log.Printf("Signal: failed to query last agent message for session %s: %v", sessionID, err)
+		return
+	}
+
+	finalText := detailedMsg
+	if finalText == "" {
+		finalText = msgText
+	}
+	if finalText == "" {
+		finalText = "Ready"
+	}
+
+	go func() {
+		_ = deleteSignalReaction(*signalServer, *signalAddress, sender, "👀", sender, timestamp)
+		_ = sendSignalReaction(*signalServer, *signalAddress, sender, "✅", sender, timestamp)
+		_ = setSignalTyping(*signalServer, *signalAddress, sender, false)
+		_ = sendSignalMessage(*signalServer, *signalAddress, sender, finalText)
+	}()
+}
+
+func sendSignalMessage(server, from, to, msg string) error {
+	urlStr := fmt.Sprintf("http://%s/v2/send", server)
+	payload := map[string]interface{}{
+		"message":    msg,
+		"number":     from,
+		"recipients": []string{to},
+	}
+	bytesPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.Post(urlStr, "application/json", bytes.NewReader(bytesPayload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+func sendSignalReaction(server, from, recipient, emoji, targetAuthor string, targetTimestamp int64) error {
+	urlStr := fmt.Sprintf("http://%s/v1/reactions/%s", server, from)
+	payload := map[string]interface{}{
+		"recipient":        recipient,
+		"emoji":            emoji,
+		"target_author":    targetAuthor,
+		"target_timestamp": targetTimestamp,
+	}
+	bytesPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	resp, err := http.Post(urlStr, "application/json", bytes.NewReader(bytesPayload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+func deleteSignalReaction(server, from, recipient, emoji, targetAuthor string, targetTimestamp int64) error {
+	urlStr := fmt.Sprintf("http://%s/v1/reactions/%s", server, from)
+	payload := map[string]interface{}{
+		"recipient":        recipient,
+		"emoji":            emoji,
+		"target_author":    targetAuthor,
+		"target_timestamp": targetTimestamp,
+	}
+	bytesPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, urlStr, bytes.NewReader(bytesPayload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+func setSignalTyping(server, from, recipient string, typing bool) error {
+	method := http.MethodPost
+	if !typing {
+		method = http.MethodDelete
+	}
+	urlStr := fmt.Sprintf("http://%s/v1/typing-indicator/%s", server, from)
+	payload := map[string]interface{}{
+		"recipient": recipient,
+	}
+	bytesPayload, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest(method, urlStr, bytes.NewReader(bytesPayload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
+type SignalEnvelope struct {
+	Source       string `json:"source"`
+	SourceNumber string `json:"sourceNumber"`
+	Timestamp    int64  `json:"timestamp"`
+	DataMessage  *struct {
+		Message   string `json:"message"`
+		Timestamp int64  `json:"timestamp"`
+	} `json:"dataMessage"`
+}
+
+type SignalReceiveItem struct {
+	Envelope SignalEnvelope `json:"envelope"`
+}
+
+func processPendingSignalMessages(db *sql.DB, server, from string) error {
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	urlStr := fmt.Sprintf("http://%s/v1/receive/%s", server, from)
+	resp, err := client.Get(urlStr)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var items []SignalReceiveItem
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		env := item.Envelope
+		sender := env.SourceNumber
+		if sender == "" {
+			sender = env.Source
+		}
+		if sender == "" || env.DataMessage == nil || env.DataMessage.Message == "" {
+			continue
+		}
+
+		signalSessionMu.Lock()
+		setSignalRecipient(db, sender)
+
+		activeSession := activeSignalSessionID
+		if activeSession != "" {
+			sessionsMu.Lock()
+			_, exists := activeSessions[activeSession]
+			sessionsMu.Unlock()
+			if !exists {
+				activeSignalSessionID = ""
+				activeSession = ""
+			}
+		}
+
+		if activeSession == "" {
+			signalSessionMu.Unlock()
+			_ = sendSignalMessage(server, from, sender, "No active agent session. Connect to push and invoke '/signal' to enable.")
+			continue
+		}
+
+		lastSignalMsgTimestamp = env.Timestamp
+		lastSignalMsgSender = sender
+		isWaitingForAgentResponse = true
+		signalSessionMu.Unlock()
+
+		_ = sendSignalReaction(server, from, sender, "👀", sender, env.Timestamp)
+		_ = setSignalTyping(server, from, sender, true)
+
+		interact := &Interaction{
+			SessionID: activeSession,
+			IsUser:    true,
+			Message:   env.DataMessage.Message,
+		}
+		if err := saveInteraction(db, interact); err != nil {
+			log.Printf("Signal: error saving interaction: %v", err)
+		}
+	}
+	return nil
+}
+
+func pollSignalMessages(db *sql.DB, server, from string) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		_ = processPendingSignalMessages(db, server, from)
+	}
 }
 
 

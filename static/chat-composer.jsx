@@ -135,7 +135,7 @@ function Composer({ theme, value, setValue, onSend, onOpenPalette, agentColor, i
       <div style={{
         display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap',
       }}>
-        {['/run', '/diff', '/explain', '/test'].map((s) => (
+        {['/run', '/diff', '/explain', '/test', '/signal'].map((s) => (
           <button key={s} onClick={() => setValue(s + ' ')} style={{
             all: 'unset', cursor: 'pointer',
             padding: '4px 9px', borderRadius: 999,
@@ -160,6 +160,7 @@ const PALETTE_ITEMS = [
   { id: 'p9', cmd: '/restart', label: 'Restart fresh', desc: 'Restart Gemini-agent with a new session', icon: 'refresh' },
   { id: 'p10', cmd: '/restart resume', label: 'Restart resume', desc: 'Restart Gemini-agent and resume current session', icon: 'refresh' },
   { id: 'p11', cmd: '/push register', label: 'Register push', desc: 'Re-register for Web Push notifications', icon: 'sparkle' },
+  { id: 'p12', cmd: '/signal', label: 'Signal control', desc: 'Activate this session to respond to Signal messages (optional: stop, or +phone)', icon: 'terminal' },
 ];
 
 function CommandPalette({ theme, open, onClose, onPick }) {
