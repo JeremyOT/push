@@ -3209,19 +3209,21 @@ func pollSignalMessages(db *sql.DB, server, adminAddress string) {
 	for range ticker.C {
 		if botAddress == "" {
 			addr, err := getSignalBotAddress(server)
-			if err != nil {
-				// Fallback to adminAddress (Note to Self / single number mode)
-				botAddress = adminAddress
-			} else {
+			if err == nil {
 				botAddress = addr
 				signalSessionMu.Lock()
 				signalBotAddress = botAddress
 				signalSessionMu.Unlock()
+				log.Printf("Signal: discovered bot address %s (admin address: %s)", botAddress, adminAddress)
 			}
-			log.Printf("Signal: discovered bot address %s (admin address: %s)", botAddress, adminAddress)
 		}
 
-		_ = processPendingSignalMessages(db, server, botAddress)
+		activeBotAddr := botAddress
+		if activeBotAddr == "" {
+			activeBotAddr = adminAddress // temporary fallback, try again next tick
+		}
+
+		_ = processPendingSignalMessages(db, server, activeBotAddr)
 	}
 }
 
