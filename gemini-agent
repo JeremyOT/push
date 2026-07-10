@@ -9,11 +9,13 @@ ADDITIONAL_ARGS=()
 AGENT_CMD="gemini"
 
 # Parse arguments
+SIGNAL=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --agent) AGENT_CMD="$2"; shift 2 ;;
         --resume|--continue) RESUME=true; shift ;;
         --yolo) YOLO=true; shift ;;
+        --signal) SIGNAL=true; shift ;;
         *)
             if [ -z "$SESSION_NAME_OVERRIDE" ]; then
                 SESSION_NAME_OVERRIDE="$1"
@@ -27,6 +29,11 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Prepare agent args
+SIGNAL_FLAG=""
+if [ "$SIGNAL" = true ]; then
+    SIGNAL_FLAG="--signal"
+fi
+
 AGENT_ARGS=("${ADDITIONAL_ARGS[@]}")
 if [ "$YOLO" = true ]; then
     if [ "$AGENT_CMD" = "agy" ]; then
@@ -149,7 +156,8 @@ while true; do
             --session-name "$SESSION_NAME" \
             --session-path "$SESSION_PATH" \
             --model "$AGENT_CMD" \
-            --tmux-target "$TMUX_TARGET" &
+            --tmux-target "$TMUX_TARGET" \
+            $SIGNAL_FLAG &
         if [ "$AGENT_CMD" = "agy" ]; then
             echo $! > "$PUSH_PID_FILE"
         else
@@ -189,7 +197,8 @@ while true; do
                     --session-name "$SESSION_NAME" \
                     --session-path "$SESSION_PATH" \
                     --model "$AGENT_CMD" \
-                    --tmux-target "$TMUX_TARGET" &
+                    --tmux-target "$TMUX_TARGET" \
+                    $SIGNAL_FLAG &
                 echo $! > "$PUSH_PID_FILE"
             else
                 
@@ -217,7 +226,8 @@ while true; do
                     --session-name "$SESSION_NAME" \
                     --session-path "$SESSION_PATH" \
                     --model "$AGENT_CMD" \
-                    --tmux-target "$TMUX_TARGET" &
+                    --tmux-target "$TMUX_TARGET" \
+                    $SIGNAL_FLAG &
                 echo $! > "$PUSH_PID_FILE"
             fi
 
