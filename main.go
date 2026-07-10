@@ -108,6 +108,7 @@ var (
 	lastSignalMsgSender       string
 	isWaitingForAgentResponse bool
 	signalConnected           bool
+	signalBotAddress          string
 )
 
 type Broadcaster struct {
@@ -2816,6 +2817,18 @@ func scrapeImages(i *Interaction) {
 
 // Helpers for Signal integration
 
+func getSignalBotAddressGlobal() string {
+	signalSessionMu.Lock()
+	defer signalSessionMu.Unlock()
+	if signalBotAddress != "" {
+		return signalBotAddress
+	}
+	if signalAddress != nil {
+		return *signalAddress
+	}
+	return ""
+}
+
 func getSignalRecipient(db *sql.DB) string {
 	var val string
 	row := db.QueryRow("SELECT value FROM config WHERE key = 'signal_recipient'")
@@ -2840,12 +2853,13 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 			}
 			signalSessionMu.Unlock()
 
-			broadcaster.Broadcast(Interaction{
+			_ = saveInteraction(db, &Interaction{
 				SessionID: i.SessionID,
 				Title:     "System",
 				Message:   "Signal control stopped for this session.",
 				Status:    "r",
 				Agent:     "remote",
+				Kind:      "status",
 				Timestamp: time.Now().UTC(),
 			})
 			return
@@ -2867,22 +2881,26 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 
 		msgText := fmt.Sprintf("Session %s is now responding to messages on signal", sessionName)
 		var statusText string
-		if recipient != "" {
-			if err := sendSignalMessage(*signalServer, *signalAddress, recipient, msgText); err != nil {
+		botAddr := getSignalBotAddressGlobal()
+		if recipient != "" && botAddr != "" {
+			if err := sendSignalMessage(*signalServer, botAddr, recipient, msgText); err != nil {
 				statusText = fmt.Sprintf("Signal session activated, but failed to send message to %s: %v", recipient, err)
 			} else {
 				statusText = fmt.Sprintf("Signal session activated. Message sent to %s", recipient)
 			}
+		} else if botAddr == "" {
+			statusText = "Signal session activated, but no bot address discovered yet."
 		} else {
 			statusText = "Signal session activated. Waiting for incoming Signal messages to establish recipient."
 		}
 
-		broadcaster.Broadcast(Interaction{
+		_ = saveInteraction(db, &Interaction{
 			SessionID: i.SessionID,
 			Title:     "System",
 			Message:   statusText,
 			Status:    "r",
 			Agent:     "remote",
+			Kind:      "status",
 			Timestamp: time.Now().UTC(),
 		})
 	}()
@@ -2920,12 +2938,15 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 		finalText = "Ready"
 	}
 
-	go func() {
-		_ = deleteSignalReaction(*signalServer, *signalAddress, sender, "👀", sender, timestamp)
-		_ = sendSignalReaction(*signalServer, *signalAddress, sender, "✅", sender, timestamp)
-		_ = setSignalTyping(*signalServer, *signalAddress, sender, false)
-		_ = sendSignalMessage(*signalServer, *signalAddress, sender, finalText)
-	}()
+	botAddr := getSignalBotAddressGlobal()
+	if botAddr != "" {
+		go func() {
+			_ = deleteSignalReaction(*signalServer, botAddr, sender, "👀", sender, timestamp)
+			_ = sendSignalReaction(*signalServer, botAddr, sender, "✅", sender, timestamp)
+			_ = setSignalTyping(*signalServer, botAddr, sender, false)
+			_ = sendSignalMessage(*signalServer, botAddr, sender, finalText)
+		}()
+	}
 }
 
 func sendSignalMessage(server, from, to, msg string) error {
@@ -3058,11 +3079,36 @@ type SignalReceiveItem struct {
 	Envelope SignalEnvelope `json:"envelope"`
 }
 
-func processPendingSignalMessages(db *sql.DB, server, from string) error {
+func getSignalBotAddress(server string) (string, error) {
+	urlStr := fmt.Sprintf("http://%s/v1/accounts", server)
+	resp, err := http.Get(urlStr)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var accounts []string
+	if err := json.NewDecoder(resp.Body).Decode(&accounts); err != nil {
+		return "", err
+	}
+
+	if len(accounts) == 0 {
+		return "", fmt.Errorf("no registered accounts found on Signal daemon")
+	}
+
+	return accounts[0], nil
+}
+
+func processPendingSignalMessages(db *sql.DB, server, botAddress string) error {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	urlStr := fmt.Sprintf("http://%s/v1/receive/%s", server, from)
+	urlStr := fmt.Sprintf("http://%s/v1/receive/%s", server, botAddress)
 	resp, err := client.Get(urlStr)
 	if err != nil {
 		signalSessionMu.Lock()
@@ -3131,7 +3177,7 @@ func processPendingSignalMessages(db *sql.DB, server, from string) error {
 
 		if activeSession == "" {
 			signalSessionMu.Unlock()
-			_ = sendSignalMessage(server, from, sender, "No active agent session. Connect to push and invoke '/signal' to enable.")
+			_ = sendSignalMessage(server, botAddress, sender, "No active agent session. Connect to push and invoke '/signal' to enable.")
 			continue
 		}
 
@@ -3140,8 +3186,8 @@ func processPendingSignalMessages(db *sql.DB, server, from string) error {
 		isWaitingForAgentResponse = true
 		signalSessionMu.Unlock()
 
-		_ = sendSignalReaction(server, from, sender, "👀", sender, env.Timestamp)
-		_ = setSignalTyping(server, from, sender, true)
+		_ = sendSignalReaction(server, botAddress, sender, "👀", sender, env.Timestamp)
+		_ = setSignalTyping(server, botAddress, sender, true)
 
 		interact := &Interaction{
 			SessionID: activeSession,
@@ -3155,11 +3201,27 @@ func processPendingSignalMessages(db *sql.DB, server, from string) error {
 	return nil
 }
 
-func pollSignalMessages(db *sql.DB, server, from string) {
+func pollSignalMessages(db *sql.DB, server, adminAddress string) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
+
+	var botAddress string
 	for range ticker.C {
-		_ = processPendingSignalMessages(db, server, from)
+		if botAddress == "" {
+			addr, err := getSignalBotAddress(server)
+			if err != nil {
+				// Fallback to adminAddress (Note to Self / single number mode)
+				botAddress = adminAddress
+			} else {
+				botAddress = addr
+				signalSessionMu.Lock()
+				signalBotAddress = botAddress
+				signalSessionMu.Unlock()
+			}
+			log.Printf("Signal: discovered bot address %s (admin address: %s)", botAddress, adminAddress)
+		}
+
+		_ = processPendingSignalMessages(db, server, botAddress)
 	}
 }
 

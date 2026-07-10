@@ -2563,11 +2563,17 @@ func TestSignalIntegration(t *testing.T) {
 		receivedRequests = append(receivedRequests, fmt.Sprintf("%s %s", r.Method, r.URL.Path))
 		mu.Unlock()
 
-		if r.URL.Path == "/v1/receive/+1234567890" {
+		if r.URL.Path == "/v1/accounts" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`["+1999999999"]`))
+			return
+		}
+
+		if r.URL.Path == "/v1/receive/+1999999999" {
 			mu.Lock()
 			pollCount := 0
 			for _, req := range receivedRequests {
-				if req == "GET /v1/receive/+1234567890" {
+				if req == "GET /v1/receive/+1999999999" {
 					pollCount++
 				}
 			}
@@ -2641,7 +2647,11 @@ func TestSignalIntegration(t *testing.T) {
 		t.Errorf("Expected active Signal session to be %s, got %s", sessID, currActive)
 	}
 
-	err = processPendingSignalMessages(db, *signalServer, *signalAddress)
+	signalSessionMu.Lock()
+	signalBotAddress = "+1999999999"
+	signalSessionMu.Unlock()
+
+	err = processPendingSignalMessages(db, *signalServer, "+1999999999")
 	if err != nil {
 		t.Fatalf("processPendingSignalMessages failed: %v", err)
 	}
