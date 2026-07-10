@@ -3050,6 +3050,89 @@ type SignalReceiveItem struct {
 	Envelope SignalEnvelope `json:"envelope"`
 }
 
+func parseSignalAnswer(db *sql.DB, sessionID, userMsg string) (string, string) {
+	var interactID int64
+	var kind string
+	var title string
+	var detailedMsg string
+	err := db.QueryRow("SELECT id, kind, title, COALESCE(detailed_message, '') FROM interactions WHERE session_id = ? AND status = 'awaiting' ORDER BY id DESC LIMIT 1", sessionID).Scan(&interactID, &kind, &title, &detailedMsg)
+	if err != nil {
+		return userMsg, ""
+	}
+
+	trimmed := strings.TrimSpace(userMsg)
+	if trimmed == "" {
+		return userMsg, ""
+	}
+
+	var numPart, textPart string
+	fields := strings.Fields(trimmed)
+	if len(fields) > 0 {
+		first := fields[0]
+		colonIdx := strings.Index(first, ":")
+		if colonIdx != -1 {
+			numPart = first[:colonIdx]
+			textPart = first[colonIdx+1:]
+			if len(fields) > 1 {
+				textPart += " " + strings.Join(fields[1:], " ")
+			}
+		} else {
+			numPart = first
+			if len(fields) > 1 {
+				textPart = strings.Join(fields[1:], " ")
+			}
+		}
+	}
+	textPart = strings.TrimSpace(textPart)
+
+	choiceIdx, err := strconv.Atoi(numPart)
+	if err != nil {
+		return userMsg, ""
+	}
+
+	if kind == "approval" || strings.Contains(title, "ToolPermission") {
+		if choiceIdx >= 1 && choiceIdx <= 4 {
+			return strconv.Itoa(choiceIdx), "choice"
+		}
+	}
+
+	if kind == "question" && detailedMsg != "" {
+		type UIOption struct {
+			Label string `json:"label"`
+			Value string `json:"value"`
+		}
+		type UIQuestion struct {
+			Type    string     `json:"type"`
+			Options []UIOption `json:"options"`
+		}
+		type UIQuestionPayload struct {
+			Questions []UIQuestion `json:"questions"`
+		}
+
+		var payload UIQuestionPayload
+		if err := json.Unmarshal([]byte(detailedMsg), &payload); err == nil && len(payload.Questions) > 0 {
+			q := payload.Questions[0]
+			if q.Type == "choice" && len(q.Options) > 0 {
+				if choiceIdx >= 1 && choiceIdx <= len(q.Options) {
+					opt := q.Options[choiceIdx-1]
+					val := opt.Value
+					if val == "" {
+						val = strconv.Itoa(choiceIdx)
+					}
+					cleanLabel := strings.TrimSpace(strings.ToLower(opt.Label))
+					isWriteIn := cleanLabel == "write-in..." || cleanLabel == "write-in" || cleanLabel == "write in..." || cleanLabel == "write in"
+					if isWriteIn && textPart != "" {
+						return fmt.Sprintf("%s:%s", val, textPart), "choice"
+					}
+					return val, "choice"
+				}
+			}
+		}
+	}
+
+	return userMsg, ""
+}
+
 func listenSignalEvents(db *sql.DB, server, adminAddress string) error {
 	client := &http.Client{
 		Timeout: 0,
@@ -3144,13 +3227,44 @@ func listenSignalEvents(db *sql.DB, server, adminAddress string) error {
 		_ = sendSignalReaction(server, "", sender, "👀", sender, env.Timestamp)
 		_ = setSignalTyping(server, "", sender, true)
 
-		interact := &Interaction{
-			SessionID: activeSession,
-			IsUser:    true,
-			Message:   env.DataMessage.Message,
-		}
-		if err := saveInteraction(db, interact); err != nil {
-			log.Printf("Signal: error saving interaction: %v", err)
+		msgText, kind := parseSignalAnswer(db, activeSession, env.DataMessage.Message)
+
+		if kind == "choice" && strings.Contains(msgText, ":") {
+			parts := strings.SplitN(msgText, ":", 2)
+			choicePart := parts[0]
+			textPart := parts[1]
+
+			interact1 := &Interaction{
+				SessionID: activeSession,
+				IsUser:    true,
+				Message:   choicePart,
+				Kind:      "choice",
+			}
+			if err := saveInteraction(db, interact1); err != nil {
+				log.Printf("Signal: error saving interaction choice: %v", err)
+			}
+
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				interact2 := &Interaction{
+					SessionID: activeSession,
+					IsUser:    true,
+					Message:   textPart,
+				}
+				if err := saveInteraction(db, interact2); err != nil {
+					log.Printf("Signal: error saving interaction text: %v", err)
+				}
+			}()
+		} else {
+			interact := &Interaction{
+				SessionID: activeSession,
+				IsUser:    true,
+				Message:   msgText,
+				Kind:      kind,
+			}
+			if err := saveInteraction(db, interact); err != nil {
+				log.Printf("Signal: error saving interaction: %v", err)
+			}
 		}
 	}
 }

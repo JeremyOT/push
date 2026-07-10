@@ -2757,6 +2757,93 @@ func TestSignalIntegration(t *testing.T) {
 	}
 }
 
+func TestParseSignalAnswer(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open memory db: %v", err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`
+		CREATE TABLE interactions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			identifier TEXT,
+			timestamp DATETIME,
+			title TEXT,
+			message TEXT,
+			detailed_message TEXT,
+			link TEXT,
+			is_user BOOLEAN,
+			quiet BOOLEAN,
+			status TEXT,
+			kind TEXT,
+			agent TEXT,
+			session_id TEXT,
+			session_path TEXT,
+			images TEXT
+		);
+		CREATE TABLE config (
+			key TEXT PRIMARY KEY,
+			value TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tables: %v", err)
+	}
+
+	sessID := "test-session"
+
+	// 1. Test when no question is awaiting
+	msg, kind := parseSignalAnswer(db, sessID, "1")
+	if msg != "1" || kind != "" {
+		t.Errorf("Expected original msg '1' and empty kind, got %q, %q", msg, kind)
+	}
+
+	// 2. Test approval
+	_, err = db.Exec(`
+		INSERT INTO interactions (session_id, status, kind, title, message)
+		VALUES (?, 'awaiting', 'approval', 'ToolPermission:read_file', 'Approve action?')
+	`, sessID)
+	if err != nil {
+		t.Fatalf("Failed to insert approval: %v", err)
+	}
+
+	msg, kind = parseSignalAnswer(db, sessID, "2")
+	if msg != "2" || kind != "choice" {
+		t.Errorf("Expected '2' and 'choice' for approval, got %q, %q", msg, kind)
+	}
+
+	// Resolve the approval
+	_, err = db.Exec("UPDATE interactions SET status = 'd' WHERE session_id = ?", sessID)
+
+	// 3. Test choice question
+	_, err = db.Exec(`
+		INSERT INTO interactions (session_id, status, kind, title, message, detailed_message)
+		VALUES (?, 'awaiting', 'question', 'Question', 'Pick one', '{"questions":[{"type":"choice","options":[{"label":"First","value":"f"},{"label":"Second","value":"s"},{"label":"Write-in","value":"w"}]}]}')
+	`, sessID)
+	if err != nil {
+		t.Fatalf("Failed to insert question: %v", err)
+	}
+
+	// Standard choice select
+	msg, kind = parseSignalAnswer(db, sessID, "2")
+	if msg != "s" || kind != "choice" {
+		t.Errorf("Expected 's' (value of second option) and 'choice', got %q, %q", msg, kind)
+	}
+
+	// Write-in select
+	msg, kind = parseSignalAnswer(db, sessID, "3:my write-in text")
+	if msg != "w:my write-in text" || kind != "choice" {
+		t.Errorf("Expected 'w:my write-in text' and 'choice', got %q, %q", msg, kind)
+	}
+
+	// Write-in with space separator instead of colon
+	msg, kind = parseSignalAnswer(db, sessID, "3 my write-in text")
+	if msg != "w:my write-in text" || kind != "choice" {
+		t.Errorf("Expected 'w:my write-in text' and 'choice', got %q, %q", msg, kind)
+	}
+}
+
 
 
 
