@@ -44,6 +44,18 @@ var staticFS embed.FS
 //go:embed gemini-agent
 var geminiAgentScript string
 
+type UIOption struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+type UIQuestion struct {
+	Type    string     `json:"type"`
+	Options []UIOption `json:"options"`
+}
+type UIQuestionPayload struct {
+	Questions []UIQuestion `json:"questions"`
+}
+
 type EmbeddedImage struct {
 	Source string `json:"source"`
 	Data   string `json:"data"` // Data URL: "data:image/png;base64,..."
@@ -932,6 +944,10 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 
 	if i.Kind == "status" && i.Status == "r" && i.SessionID != "" && (i.Message == "Ready" || i.Message == "" || i.Message == "Stopped") {
 		handleSignalReadyState(db, i.SessionID)
+	}
+
+	if i.ID > 0 && !i.IsUser && (i.Kind == "question" || i.Kind == "approval" || i.Status == "awaiting") {
+		handleSignalQuestion(db, i)
 	}
 
 	// Broadcast for streaming to all clients
@@ -2900,11 +2916,20 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 		args := strings.Fields(cmdStr)
 		if len(args) > 1 && args[1] == "stop" {
 			signalSessionMu.Lock()
+			oldActive := activeSignalSessionID
 			if activeSignalSessionID == i.SessionID {
 				activeSignalSessionID = ""
 				activeSignalQuiet = false
 			}
 			signalSessionMu.Unlock()
+
+			if oldActive != "" {
+				go broadcaster.Broadcast(Interaction{
+					Title:     "signal-inactive",
+					SessionID: oldActive,
+					Timestamp: time.Now().UTC(),
+				})
+			}
 
 			_ = saveInteraction(db, &Interaction{
 				SessionID: i.SessionID,
@@ -2932,6 +2957,13 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 		activeSignalQuiet = isQuiet
 		recipient := getSignalRecipient(db)
 		signalSessionMu.Unlock()
+
+		go broadcaster.Broadcast(Interaction{
+			Title:     "signal-active",
+			SessionID: i.SessionID,
+			Message:   func() string { if isQuiet { return "quiet" } else { return "normal" } }(),
+			Timestamp: time.Now().UTC(),
+		})
 
 		sessionName := i.Title
 		if sessionName == "" {
@@ -3009,6 +3041,84 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 			_ = setSignalTyping(*signalServer, "", recipient, false)
 		}
 		_ = sendSignalMessage(*signalServer, "", recipient, finalText)
+	}()
+}
+
+var (
+	sentQuestionsMu sync.Mutex
+	sentQuestions   = make(map[int64]bool)
+)
+
+func handleSignalQuestion(db *sql.DB, i *Interaction) {
+	signalSessionMu.Lock()
+	if activeSignalSessionID == "" || activeSignalSessionID != i.SessionID {
+		signalSessionMu.Unlock()
+		return
+	}
+	recipient := getSignalRecipient(db)
+	signalSessionMu.Unlock()
+
+	if recipient == "" {
+		return
+	}
+
+	// Only send once per interaction ID
+	sentQuestionsMu.Lock()
+	if sentQuestions[i.ID] {
+		sentQuestionsMu.Unlock()
+		return
+	}
+	sentQuestionsMu.Unlock()
+
+	var sb strings.Builder
+	isChoiceQuestion := false
+
+	if i.Kind == "approval" || (i.Kind != "question" && strings.Contains(i.Title, "ToolPermission")) {
+		sb.WriteString("⚠️ Tool Permission Request\n")
+		sb.WriteString(i.Message)
+		sb.WriteString("\n\nChoices:\n")
+		sb.WriteString("1. Allow\n")
+		sb.WriteString("2. Allow Session\n")
+		sb.WriteString("3. Allow Forever\n")
+		sb.WriteString("4. Deny\n\n")
+		sb.WriteString("Respond with the choice number.")
+	} else if i.Kind == "question" {
+		if i.DetailedMessage != "" {
+			var payload UIQuestionPayload
+			if err := json.Unmarshal([]byte(i.DetailedMessage), &payload); err == nil && len(payload.Questions) > 0 {
+				q := payload.Questions[0]
+				if q.Type == "choice" && len(q.Options) > 0 {
+					isChoiceQuestion = true
+					sb.WriteString("❓ Question:\n")
+					sb.WriteString(i.Message)
+					sb.WriteString("\n\nChoices:\n")
+					for idx, opt := range q.Options {
+						sb.WriteString(fmt.Sprintf("%d. %s\n", idx+1, opt.Label))
+					}
+					sb.WriteString("\nRespond with the choice number.")
+				}
+			}
+		}
+		if !isChoiceQuestion {
+			// If it's a choice question but we haven't loaded the choices yet,
+			// don't send it yet. Wait for the update containing choices!
+			if strings.Contains(i.Message, "[1]") || strings.Contains(i.Message, "choices:") || i.DetailedMessage != "" {
+				sb.WriteString("❓ Question:\n")
+				sb.WriteString(i.Message)
+			} else {
+				return
+			}
+		}
+	} else {
+		return
+	}
+
+	sentQuestionsMu.Lock()
+	sentQuestions[i.ID] = true
+	sentQuestionsMu.Unlock()
+
+	go func() {
+		_ = sendSignalMessage(*signalServer, "", recipient, sb.String())
 	}()
 }
 
@@ -3154,18 +3264,6 @@ func parseSignalAnswer(db *sql.DB, sessionID, userMsg string) (string, string) {
 	}
 
 	if kind == "question" && detailedMsg != "" {
-		type UIOption struct {
-			Label string `json:"label"`
-			Value string `json:"value"`
-		}
-		type UIQuestion struct {
-			Type    string     `json:"type"`
-			Options []UIOption `json:"options"`
-		}
-		type UIQuestionPayload struct {
-			Questions []UIQuestion `json:"questions"`
-		}
-
 		var payload UIQuestionPayload
 		if err := json.Unmarshal([]byte(detailedMsg), &payload); err == nil && len(payload.Questions) > 0 {
 			q := payload.Questions[0]

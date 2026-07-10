@@ -2966,6 +2966,117 @@ func TestSignalQuietCommand(t *testing.T) {
 	}
 }
 
+func TestSignalQuestionSupport(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	sessID := "sess-question-test"
+
+	// Mock signalServer to route to a local test HTTP server
+	var receivedMsg string
+	var msgMu sync.Mutex
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/rpc" {
+			var req map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			method, _ := req["method"].(string)
+			if method == "send" {
+				params, _ := req["params"].(map[string]interface{})
+				msgStr, _ := params["message"].(string)
+				msgMu.Lock()
+				receivedMsg = msgStr
+				msgMu.Unlock()
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"jsonrpc":"2.0","result":{"uuid":"123"},"id":"1"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer testServer.Close()
+
+	// Update global signal server address to point to our test server
+	origServer := *signalServer
+	*signalServer = strings.TrimPrefix(testServer.URL, "http://")
+	defer func() { *signalServer = origServer }()
+
+	// Configure active Signal session
+	signalSessionMu.Lock()
+	activeSignalSessionID = sessID
+	activeSignalQuiet = false
+	signalSessionMu.Unlock()
+
+	setSignalRecipient(db, "+12067249832")
+
+	// Clear sent questions cache for test isolation
+	sentQuestionsMu.Lock()
+	sentQuestions = make(map[int64]bool)
+	sentQuestionsMu.Unlock()
+
+	// 1. Test Approval question
+	iApproval := Interaction{
+		SessionID: sessID,
+		Kind:      "approval",
+		Title:     "ToolPermission:execute",
+		Message:   "Allow directory listing?",
+		IsUser:    false,
+		Status:    "awaiting",
+	}
+
+	err := saveInteraction(db, &iApproval)
+	if err != nil {
+		t.Fatalf("Failed to save approval interaction: %v", err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+
+	msgMu.Lock()
+	appMsg := receivedMsg
+	msgMu.Unlock()
+
+	if !strings.Contains(appMsg, "⚠️ Tool Permission Request") {
+		t.Errorf("Expected approval format, got: %q", appMsg)
+	}
+	if !strings.Contains(appMsg, "1. Allow") {
+		t.Errorf("Expected choices to be included, got: %q", appMsg)
+	}
+
+	// Reset receivedMsg
+	msgMu.Lock()
+	receivedMsg = ""
+	msgMu.Unlock()
+
+	// 2. Test Choice question
+	iQuestion := Interaction{
+		SessionID:       sessID,
+		Kind:            "question",
+		Message:         "Choose an option:",
+		DetailedMessage: `{"questions":[{"type":"choice","options":[{"label":"Yes","value":"y"},{"label":"No","value":"n"}]}]}`,
+		IsUser:          false,
+		Status:          "awaiting",
+	}
+
+	err = saveInteraction(db, &iQuestion)
+	if err != nil {
+		t.Fatalf("Failed to save choice question interaction: %v", err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+
+	msgMu.Lock()
+	qMsg := receivedMsg
+	msgMu.Unlock()
+
+	if !strings.Contains(qMsg, "❓ Question:") {
+		t.Errorf("Expected question format, got: %q", qMsg)
+	}
+	if !strings.Contains(qMsg, "1. Yes") || !strings.Contains(qMsg, "2. No") {
+		t.Errorf("Expected numbered choice options in question, got: %q", qMsg)
+	}
+}
+
 
 
 

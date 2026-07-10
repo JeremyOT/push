@@ -187,7 +187,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         return { ...base, kind: 'tool', agent: agentId, tool: 'shell', duration: '', lines: msg.message.split('\n').map(l => ({ c: 'fg', t: l })) };
     }
 
-    const systemTitles = ['session-register', 'session-active', 'session-inactive', 'tmux-service', 'heartbeat'];
+    const systemTitles = ['session-register', 'session-active', 'session-inactive', 'signal-active', 'signal-inactive', 'tmux-service', 'heartbeat'];
     if (msg.kind === 'status' || (!msg.identifier && (systemTitles.includes(msg.title) || msg.agent === 'tmux'))) {
         return { ...base, kind: 'status', agent: agentId, status: status || 'ready' };
     }
@@ -352,7 +352,7 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
         if (sid && sid !== 't1' && sid !== 'undefined' && sid !== 'null') {
             const idx = next.findIndex(t => t.id === sid);
             const agent = mapped.agent || 'remote';
-            const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service'];
+            const sysTitles = ['session-register', 'session-active', 'session-inactive', 'heartbeat', 'tmux-service', 'signal-active', 'signal-inactive'];
             
             let title = '';
             if (msg.title === 'session-register') {
@@ -368,37 +368,65 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
                     let nextActive = t.active;
                     if (msg.title === 'session-active') nextActive = true;
                     else if (msg.title === 'session-inactive') nextActive = false;
-                    else if (!isHistory) nextActive = true;
+                    else if (!isHistory && msg.title !== 'signal-active' && msg.title !== 'signal-inactive') nextActive = true;
+
+                    let nextSignalActive = t.signalActive;
+                    let nextSignalQuiet = t.signalQuiet;
+                    if (msg.title === 'signal-active') {
+                        nextSignalActive = true;
+                        nextSignalQuiet = msg.message === 'quiet';
+                        next.forEach((oth, oIdx) => {
+                            if (oth.id !== sid && oth.signalActive) {
+                                next[oIdx] = { ...oth, signalActive: false, signalQuiet: false };
+                            }
+                        });
+                    } else if (msg.title === 'signal-inactive') {
+                        nextSignalActive = false;
+                        nextSignalQuiet = false;
+                    }
 
                     next[idx] = {
                         ...t,
                         title: (title || t.title).trim(),
                         agent: agent !== 'remote' ? agent : t.agent,
-                        snippet: mapped.text || t.snippet,
-                        updated: mapped.time,
+                        snippet: sysTitles.includes(msg.title) ? t.snippet : (mapped.text || t.snippet),
+                        updated: sysTitles.includes(msg.title) ? t.updated : mapped.time,
                         lastTimestamp: isNaN(msgTs) ? t.lastTimestamp : msgTs,
                         sessionPath: msg.session_path || t.sessionPath,
                         status: msg.is_user ? (isToolDenyChoice(msg, messages) ? 'ready' : 'working') : (mapped.status || t.status),
                         active: nextActive,
+                        signalActive: nextSignalActive,
+                        signalQuiet: nextSignalQuiet,
                         lastMsgId: msg.id > 0 ? msg.id : t.lastMsgId,
                         placeholder: false
                     };
                 }
             } else {
                 changed = true;
+                let newSignalActive = msg.title === 'signal-active';
+                let newSignalQuiet = msg.title === 'signal-active' && msg.message === 'quiet';
+                if (newSignalActive) {
+                    next.forEach((oth, oIdx) => {
+                        if (oth.id !== sid && oth.signalActive) {
+                            next[oIdx] = { ...oth, signalActive: false, signalQuiet: false };
+                        }
+                    });
+                }
                 next.push({
                     id: sid,
                     agent,
                     title: (title || 'CLI Agent').trim(),
                     status: msg.is_user ? (isToolDenyChoice(msg, messages) ? 'ready' : 'working') : (mapped.status || 'ready'),
-                    snippet: mapped.text || 'Active session',
+                    snippet: sysTitles.includes(msg.title) ? 'Active session' : (mapped.text || 'Active session'),
                     updated: mapped.time,
                     lastTimestamp: isNaN(msgTs) ? Date.now() : msgTs,
                     sessionPath: msg.session_path || '',
                     unread: 0,
                     pinned: false,
                     sessionId: sid,
-                    active: msg.title === 'session-active' || (!isHistory && msg.title !== 'session-inactive'),
+                    active: msg.title === 'session-active' || (!isHistory && msg.title !== 'session-inactive' && msg.title !== 'signal-inactive'),
+                    signalActive: newSignalActive,
+                    signalQuiet: newSignalQuiet,
                     lastMsgId: msg.id > 0 ? msg.id : 0,
                     placeholder: false
                 });
@@ -472,6 +500,24 @@ function PushChat({ theme, dark, setDark, mode = 'tablet', icon = APP_ICON, solo
 
       // 5. Process all in order
       uniqueSorted.forEach(msg => processMessage(msg, setMessages, setThreads, true));
+
+      // 6. Fetch active Signal status
+      try {
+        const sigResponse = await fetch('/signal/status');
+        if (sigResponse.ok) {
+          const sigData = await sigResponse.json();
+          if (sigData.activeSessionID) {
+            setThreads(prev => prev.map(t => {
+              if (t.id === sigData.activeSessionID) {
+                return { ...t, signalActive: true, signalQuiet: sigData.quiet };
+              }
+              return { ...t, signalActive: false, signalQuiet: false };
+            }));
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching Signal status:', e);
+      }
     } catch (error) {
       console.error('Error fetching initial messages:', error);
     }

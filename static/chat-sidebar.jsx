@@ -75,6 +75,13 @@ function SidebarThreadRow({ thread, active, theme, onClick, depth = 0 }) {
           color: theme.fg,
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}>{thread.title}</div>
+        {thread.signalActive && (
+          thread.signalQuiet ? (
+            <IconSignalSlash size={14} style={{ color: theme.warn }} title="Signal active (quiet mode)" />
+          ) : (
+            <IconSignal size={14} style={{ color: theme.accent }} title="Signal active" />
+          )
+        )}
         <span style={{
           fontFamily: FONT_MONO, fontSize: 9.5, color: theme.fgDim,
           whiteSpace: 'nowrap', flexShrink: 0,

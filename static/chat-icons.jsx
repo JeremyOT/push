@@ -31,9 +31,12 @@ const IconRefresh = (p) => <Icon {...p}><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 
 const IconStop = (p) => <Icon {...p}><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor" stroke="none"/></Icon>;
 const IconArrowUp = (p) => <Icon {...p}><path d="M12 19V5M5 12l7-7 7 7"/></Icon>;
 const IconAttach = (p) => <Icon {...p}><path d="M21 11.5 12.5 20a5.5 5.5 0 1 1-7.8-7.8l8.5-8.5a3.7 3.7 0 1 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 1 1-2.6-2.6l7.8-7.8"/></Icon>;
+const IconSignal = (p) => <Icon {...p}><path d="M4 20h.01M8 20v-4M12 20v-8M16 20v-12M20 20V4"/></Icon>;
+const IconSignalSlash = (p) => <Icon {...p}><path d="M4 20h.01M8 20v-4M12 20v-8M16 20v-12M20 20V4M3 3l18 18"/></Icon>;
 
 Object.assign(window, {
   IconSearch, IconSend, IconPlus, IconCommand, IconChevron, IconChevronRight,
   IconMenu, IconClose, IconCheck, IconX, IconTerminal, IconFile, IconSparkle,
   IconCircle, IconSun, IconMoon, IconDot, IconCopy, IconRefresh, IconStop, IconArrowUp, IconAttach,
+  IconSignal, IconSignalSlash,
 });
