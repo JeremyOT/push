@@ -107,6 +107,7 @@ var (
 	lastSignalMsgTimestamp    int64
 	lastSignalMsgSender       string
 	isWaitingForAgentResponse bool
+	signalConnected           bool
 )
 
 type Broadcaster struct {
@@ -3064,13 +3065,36 @@ func processPendingSignalMessages(db *sql.DB, server, from string) error {
 	urlStr := fmt.Sprintf("http://%s/v1/receive/%s", server, from)
 	resp, err := client.Get(urlStr)
 	if err != nil {
+		signalSessionMu.Lock()
+		wasConnected := signalConnected
+		signalConnected = false
+		signalSessionMu.Unlock()
+		if wasConnected {
+			log.Printf("Signal connection lost/failed: %v. Retrying in background...", err)
+		}
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+		errStr := fmt.Sprintf("unexpected status %d: %s", resp.StatusCode, string(body))
+		signalSessionMu.Lock()
+		wasConnected := signalConnected
+		signalConnected = false
+		signalSessionMu.Unlock()
+		if wasConnected {
+			log.Printf("Signal connection error: %s. Retrying in background...", errStr)
+		}
+		return fmt.Errorf("%s", errStr)
+	}
+
+	signalSessionMu.Lock()
+	wasConnected := signalConnected
+	signalConnected = true
+	signalSessionMu.Unlock()
+	if !wasConnected {
+		log.Printf("Signal connection established/restored.")
 	}
 
 	var items []SignalReceiveItem
