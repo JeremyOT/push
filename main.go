@@ -294,6 +294,7 @@ func main() {
 	if *signalServer != "" && *signalAddress != "" {
 		log.Printf("Starting Signal listener for address %s on server %s", *signalAddress, *signalServer)
 		go startSignalListener(db, *signalServer, *signalAddress)
+		go startSignalTypingKeepAlive(db, *signalServer)
 	}
 
 	log.Fatal(http.ListenAndServe(*address, nil))
@@ -899,7 +900,7 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 		}()
 	}
 
-	if i.Kind == "status" && i.Status == "r" && i.SessionID != "" {
+	if i.Kind == "status" && i.Status == "r" && i.SessionID != "" && (i.Message == "Ready" || i.Message == "" || i.Message == "Stopped") {
 		handleSignalReadyState(db, i.SessionID)
 	}
 
@@ -2883,7 +2884,7 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 			sessionName = i.SessionID
 		}
 
-		msgText := fmt.Sprintf("Session %s is now responding to messages on signal", sessionName)
+		msgText := fmt.Sprintf("Session \"%s\" is now responding to messages on signal", sessionName)
 		var statusText string
 		botAddr := getSignalBotAddressGlobal()
 		if recipient != "" && botAddr != "" {
@@ -2916,11 +2917,13 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 		signalSessionMu.Unlock()
 		return
 	}
-	if !isWaitingForAgentResponse {
+	recipient := getSignalRecipient(db)
+	if recipient == "" {
 		signalSessionMu.Unlock()
 		return
 	}
 
+	wasWaiting := isWaitingForAgentResponse
 	isWaitingForAgentResponse = false
 	sender := lastSignalMsgSender
 	timestamp := lastSignalMsgTimestamp
@@ -2942,15 +2945,14 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 		finalText = "Ready"
 	}
 
-	botAddr := getSignalBotAddressGlobal()
-	if botAddr != "" {
-		go func() {
-			_ = deleteSignalReaction(*signalServer, botAddr, sender, "👀", sender, timestamp)
-			_ = sendSignalReaction(*signalServer, botAddr, sender, "✅", sender, timestamp)
-			_ = setSignalTyping(*signalServer, botAddr, sender, false)
-			_ = sendSignalMessage(*signalServer, botAddr, sender, finalText)
-		}()
-	}
+	go func() {
+		if wasWaiting {
+			_ = deleteSignalReaction(*signalServer, "", recipient, "👀", sender, timestamp)
+			_ = sendSignalReaction(*signalServer, "", recipient, "✅", sender, timestamp)
+			_ = setSignalTyping(*signalServer, "", recipient, false)
+		}
+		_ = sendSignalMessage(*signalServer, "", recipient, finalText)
+	}()
 }
 
 func sendSignalRPC(server, method string, params map[string]interface{}) error {
@@ -3166,6 +3168,36 @@ func startSignalListener(db *sql.DB, server, adminAddress string) {
 			}
 		}
 		time.Sleep(2 * time.Second)
+	}
+}
+
+func startSignalTypingKeepAlive(db *sql.DB, server string) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		signalSessionMu.Lock()
+		activeSession := activeSignalSessionID
+		signalSessionMu.Unlock()
+
+		if activeSession == "" {
+			continue
+		}
+
+		recipient := getSignalRecipient(db)
+		if recipient == "" {
+			continue
+		}
+
+		var status string
+		err := db.QueryRow("SELECT status FROM interactions WHERE session_id = ? ORDER BY id DESC LIMIT 1", activeSession).Scan(&status)
+		if err != nil {
+			continue
+		}
+
+		if status != "r" && status != "stop" && status != "" {
+			_ = setSignalTyping(server, "", recipient, true)
+		}
 	}
 }
 
