@@ -2554,50 +2554,40 @@ Some non-image URL: http://example.com/file.pdf`
 }
 
 func TestSignalIntegration(t *testing.T) {
-	// Set up mock Signal CLI daemon REST API server
 	var receivedRequests []string
 	var mu sync.Mutex
 
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		receivedRequests = append(receivedRequests, fmt.Sprintf("%s %s", r.Method, r.URL.Path))
-		mu.Unlock()
+		if r.URL.Path == "/api/v1/events" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(http.StatusOK)
 
-		if r.URL.Path == "/v1/accounts" {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`["+1999999999"]`))
+			// Write one message envelope
+			w.Write([]byte("data: {\"jsonrpc\":\"2.0\",\"method\":\"receive\",\"params\":{\"envelope\":{\"source\":\"+1234567890\",\"sourceNumber\":\"+1234567890\",\"timestamp\":1234567890,\"dataMessage\":{\"message\":\"Hello Agent\",\"timestamp\":1234567890}}}}\n\n"))
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			// Keep connection open during the test
+			time.Sleep(1000 * time.Millisecond)
 			return
 		}
 
-		if r.URL.Path == "/v1/receive/+1999999999" {
-			mu.Lock()
-			pollCount := 0
-			for _, req := range receivedRequests {
-				if req == "GET /v1/receive/+1999999999" {
-					pollCount++
-				}
+		if r.URL.Path == "/api/v1/rpc" {
+			var rpcReq struct {
+				Method string `json:"method"`
 			}
+			bodyBytes, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(bodyBytes, &rpcReq)
+
+			mu.Lock()
+			receivedRequests = append(receivedRequests, fmt.Sprintf("POST /api/v1/rpc method=%s", rpcReq.Method))
 			mu.Unlock()
 
-			if pollCount == 1 {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`[
-					{
-						"envelope": {
-							"source": "+1234567890",
-							"sourceNumber": "+1234567890",
-							"timestamp": 1234567890,
-							"dataMessage": {
-								"message": "Hello Agent",
-								"timestamp": 1234567890
-							}
-						}
-					}
-				]`))
-			} else {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`[]`))
-			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"jsonrpc":"2.0","result":"success","id":"1"}`))
 			return
 		}
 
@@ -2647,16 +2637,12 @@ func TestSignalIntegration(t *testing.T) {
 		t.Errorf("Expected active Signal session to be %s, got %s", sessID, currActive)
 	}
 
-	signalSessionMu.Lock()
-	signalBotAddress = "+1999999999"
-	signalSessionMu.Unlock()
+	// Start events listener in background
+	go func() {
+		_ = listenSignalEvents(db, *signalServer, *signalAddress)
+	}()
 
-	err = processPendingSignalMessages(db, *signalServer, "+1999999999")
-	if err != nil {
-		t.Fatalf("processPendingSignalMessages failed: %v", err)
-	}
-
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	mu.Lock()
 	reqs := make([]string, len(receivedRequests))
@@ -2666,19 +2652,19 @@ func TestSignalIntegration(t *testing.T) {
 	hasReaction := false
 	hasTyping := false
 	for _, req := range reqs {
-		if strings.Contains(req, "POST /v1/reactions") {
+		if strings.Contains(req, "method=sendReaction") {
 			hasReaction = true
 		}
-		if strings.Contains(req, "POST /v1/typing-indicator") {
+		if strings.Contains(req, "method=sendTyping") {
 			hasTyping = true
 		}
 	}
 
 	if !hasReaction {
-		t.Error("Expected 👀 reaction POST to have been sent to mock Signal server")
+		t.Error("Expected sendReaction for 👀 to have been sent to mock Signal server")
 	}
 	if !hasTyping {
-		t.Error("Expected typing indicator POST to have been sent to mock Signal server")
+		t.Error("Expected sendTyping to have been sent to mock Signal server")
 	}
 
 	var dbCount int
@@ -2725,37 +2711,30 @@ func TestSignalIntegration(t *testing.T) {
 	copy(postReadyReqs, receivedRequests)
 	mu.Unlock()
 
-	hasDeleteReaction := false
-	hasCheckReaction := false
+	reactionCount := 0
 	hasStopTyping := false
 	hasSendMsg := false
 
 	for _, req := range postReadyReqs {
-		if strings.Contains(req, "DELETE /v1/reactions") {
-			hasDeleteReaction = true
+		if strings.Contains(req, "method=sendReaction") {
+			reactionCount++
 		}
-		if strings.Contains(req, "POST /v1/reactions") {
-			hasCheckReaction = true
-		}
-		if strings.Contains(req, "DELETE /v1/typing-indicator") {
+		if strings.Contains(req, "method=sendTyping") {
 			hasStopTyping = true
 		}
-		if strings.Contains(req, "POST /v2/send") {
+		if strings.Contains(req, "method=send") {
 			hasSendMsg = true
 		}
 	}
 
-	if !hasDeleteReaction {
-		t.Error("Expected DELETE reaction to remove 👀")
-	}
-	if !hasCheckReaction {
-		t.Error("Expected POST reaction to add ✅")
+	if reactionCount < 2 {
+		t.Errorf("Expected at least 2 sendReaction calls after ready (remove 👀 and add ✅), got %d", reactionCount)
 	}
 	if !hasStopTyping {
-		t.Error("Expected DELETE typing-indicator to stop typing")
+		t.Error("Expected sendTyping to stop typing")
 	}
 	if !hasSendMsg {
-		t.Error("Expected POST /v2/send to deliver final response")
+		t.Error("Expected send message RPC call to deliver final response")
 	}
 
 	iStop := Interaction{
