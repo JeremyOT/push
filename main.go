@@ -1245,6 +1245,10 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 							continue
 						}
 
+						if strings.HasPrefix(msg, "/signal") {
+							continue
+						}
+
 						// Send the message
 						cmd := exec.CommandContext(ctx, "tmux", "send-keys", "-t", tmuxTarget, "-l", "--", msg)
 						if err := cmd.Run(); err != nil {
