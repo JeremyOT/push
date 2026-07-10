@@ -15,7 +15,15 @@ while [[ "$#" -gt 0 ]]; do
         --agent) AGENT_CMD="$2"; shift 2 ;;
         --resume|--continue) RESUME=true; shift ;;
         --yolo) YOLO=true; shift ;;
-        --signal) SIGNAL=true; shift ;;
+        --signal)
+            if [[ "$2" == "quiet" ]]; then
+                SIGNAL="quiet"
+                shift 2
+            else
+                SIGNAL="true"
+                shift 1
+            fi
+            ;;
         *)
             if [ -z "$SESSION_NAME_OVERRIDE" ]; then
                 SESSION_NAME_OVERRIDE="$1"
@@ -30,8 +38,10 @@ done
 
 # Prepare agent args
 SIGNAL_FLAG=""
-if [ "$SIGNAL" = true ]; then
-    SIGNAL_FLAG="--signal"
+if [ "$SIGNAL" = "quiet" ]; then
+    SIGNAL_FLAG="--signal=quiet"
+elif [ "$SIGNAL" = "true" ]; then
+    SIGNAL_FLAG="--signal=true"
 fi
 
 AGENT_ARGS=("${ADDITIONAL_ARGS[@]}")

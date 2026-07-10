@@ -52,6 +52,9 @@ Custom configuration:
 | `--session-id` | Unique ID for the current CLI session | `""` |
 | `--session-name` | Display name for the session in the web UI | `""` |
 | `--model` | Model name associated with the session (e.g., `gemini`) | `""` |
+| `--signal-server` | Signal CLI REST API daemon host:port (e.g., `127.0.0.1:8742`) | `""` |
+| `--signal-address` | Phone number registered with signal-cli (e.g., `+1234567890`) | `""` |
+| `--signal` | Immediately enable Signal forwarding (can be `true` or `quiet`) | `""` |
 
 ### Sending Messages from CLI
 
@@ -86,6 +89,55 @@ Run the agent from within a `tmux` session:
     *   **Outgoing**: Messages you type in the Push web UI are automatically forwarded to your active `tmux` pane.
     *   **Incoming**: Model responses are captured via hooks (`aftermodel.py`, `afteragent.py`) and sent to the Push app.
 3.  **Synchronization**: The script ensures that both the CLI and the web UI are scoped to the same session, providing a unified view of the agent's activity and status.
+
+Signal Integration
+------------------
+
+Push supports two-way communication and control via Signal. You can interact with your agent session directly from your Signal app.
+
+### 1. Setting up `signal-cli` Daemon
+Push interacts with the native `signal-cli` client running in JSON-RPC daemon mode over HTTP.
+
+To install and register `signal-cli`:
+1. Follow the installation guide for [signal-cli](https://github.com/AsamK/signal-cli) for your operating system. On macOS:
+   ```bash
+   brew install signal-cli
+   ```
+2. Register your phone number:
+   ```bash
+   signal-cli -u +YOUR_BOT_NUMBER register
+   # Verify the registration with the code received:
+   signal-cli -u +YOUR_BOT_NUMBER verify CODE
+   ```
+3. Start the `signal-cli` JSON-RPC daemon on port `8742`:
+   ```bash
+   signal-cli-rest-api daemon -signal-cli-config /path/to/config
+   # Alternatively, if using a dockerized or custom JSON-RPC helper, ensure the REST API is accessible.
+   ```
+
+### 2. Running Push Daemon with Signal
+Launch the `push` server with the `--signal-server` and `--signal-address` flags pointing to your registered number:
+```bash
+./push --signal-server=127.0.0.1:8742 --signal-address=+YOUR_ADMIN_NUMBER
+```
+*   **`--signal-server`**: Host and port of the running `signal-cli` daemon.
+*   **`--signal-address`**: The phone number allowed to control the daemon (only messages received from this sender will be parsed).
+
+### 3. Usage & Commands
+Inside your session (either from the web UI or via `--signal` flags), you can control forwarding:
+
+*   **`/signal`**: Activates Signal control for the current session. Responses from the agent will be forwarded to your Signal client, and incoming messages from you will be executed as inputs.
+*   **`/signal quiet`**: Activates Signal control and disables normal Web Push notifications for the session (keeping UI and Signal outputs active).
+*   **`/signal stop`**: Stops Signal control for the current session.
+*   **`/signal +12345678`**: Overrides the target recipient phone number for the session.
+
+### 4. Client CLI Flags
+When launching an agent or a tmux client session:
+*   Pass `--signal` to automatically enable Signal forwarding on session start and reconnect.
+*   Pass `--signal quiet` (or `--signal=quiet`) to immediately enable Signal forwarding and suppress normal push notifications.
+```bash
+./push --gemini-agent my-session --signal quiet
+```
 
 Web Customization
 ----------------

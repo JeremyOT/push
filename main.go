@@ -104,6 +104,7 @@ var (
 	signalAddress             *string
 	signalSessionMu           sync.Mutex
 	activeSignalSessionID     string
+	activeSignalQuiet         bool
 	lastSignalMsgTimestamp    int64
 	lastSignalMsgSender       string
 	isWaitingForAgentResponse bool
@@ -147,6 +148,26 @@ var broadcaster = &Broadcaster{
 	subscribers: make(map[chan Interaction]bool),
 }
 
+type signalFlagValue struct {
+	value string
+}
+
+func (s *signalFlagValue) String() string {
+	if s == nil {
+		return ""
+	}
+	return s.value
+}
+
+func (s *signalFlagValue) Set(val string) error {
+	s.value = val
+	return nil
+}
+
+func (s *signalFlagValue) IsBoolFlag() bool {
+	return true
+}
+
 func main() {
 	// Normalize em-dash (—) and en-dash (–) in command line arguments to standard hyphens
 	os.Args = normalizeArgs(os.Args)
@@ -175,7 +196,8 @@ func main() {
 	resumeAgent := flag.Bool("resume", false, "Resume the last agent session")
 	continueAgent := flag.Bool("continue", false, "Resume the last agent session (alias for -resume when used with -antigravity)")
 	yoloAgent := flag.Bool("yolo", false, "Enable YOLO mode (pass appropriate flags to the agent, e.g. -y for gemini, --dangerously-skip-permissions for agy)")
-	cliSignal := flag.Bool("signal", false, "Immediately enable Signal forwarding on session start and reconnect")
+	var cliSignal signalFlagValue
+	flag.Var(&cliSignal, "signal", "Immediately enable Signal forwarding on session start and reconnect (can be 'true' or 'quiet')")
 	hermesAgent := flag.String("hermes-agent", "", "URL of the Hermes Agent API for SSE proxy")
 
 	// Internal agy scraper flags
@@ -212,7 +234,9 @@ func main() {
 				os.Exit(0)
 			}
 		}()
-		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, *yoloAgent, *cliSignal, os.Stdin, os.Stdout, os.Stderr)
+		useSignal := cliSignal.value != "" && cliSignal.value != "false"
+		signalQuiet := cliSignal.value == "quiet"
+		runCliClient(ctx, *address, *cliService, *tmuxTarget, *sessionID, *sessionName, *sessionPath, *modelName, *yoloAgent, useSignal, signalQuiet, os.Stdin, os.Stdout, os.Stderr)
 		return
 	}
 
@@ -842,8 +866,13 @@ func saveInteraction(db *sql.DB, i *Interaction) error {
 	// Trigger Push for non-user messages only, and only if not quiet.
 	// For updates, we only trigger if it's the first time it becomes non-quiet.
 	if !i.IsUser && !i.Quiet {
-		if !i.Update || existingQuiet {
-			go sendPushNotifications(db, i.Title, i.Message, i.Link)
+		signalSessionMu.Lock()
+		suppressPush := activeSignalSessionID == i.SessionID && activeSignalQuiet
+		signalSessionMu.Unlock()
+		if !suppressPush {
+			if !i.Update || existingQuiet {
+				go sendPushNotifications(db, i.Title, i.Message, i.Link)
+			}
 		}
 	}
 
@@ -980,7 +1009,7 @@ func isTerminal(r io.Reader) bool {
 	return false
 }
 
-func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, sessionPath string, model string, yolo bool, useSignal bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
+func runCliClient(ctx context.Context, address string, mode string, tmuxTarget string, sessionID string, sessionName string, sessionPath string, model string, yolo bool, useSignal bool, signalQuiet bool, stdin io.Reader, stdout io.Writer, stderr io.Writer) {
 	var clientID string
 	if strings.HasPrefix(mode, "tmux:") {
 		clientID = strings.TrimPrefix(mode, "tmux:")
@@ -1123,7 +1152,11 @@ func runCliClient(ctx context.Context, address string, mode string, tmuxTarget s
 				sendMsg(msg, title, agent, "")
 			}
 			if useSignal {
-				sendUserCmd("/signal")
+				if signalQuiet {
+					sendUserCmd("/signal quiet")
+				} else {
+					sendUserCmd("/signal")
+				}
 			}
 
 			bodyDone := make(chan struct{})
@@ -2869,6 +2902,7 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 			signalSessionMu.Lock()
 			if activeSignalSessionID == i.SessionID {
 				activeSignalSessionID = ""
+				activeSignalQuiet = false
 			}
 			signalSessionMu.Unlock()
 
@@ -2887,9 +2921,15 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 		// Activate session
 		signalSessionMu.Lock()
 		activeSignalSessionID = i.SessionID
-		if len(args) > 1 && strings.HasPrefix(args[1], "+") {
-			setSignalRecipient(db, args[1])
+		isQuiet := false
+		for _, arg := range args {
+			if arg == "quiet" {
+				isQuiet = true
+			} else if strings.HasPrefix(arg, "+") {
+				setSignalRecipient(db, arg)
+			}
 		}
+		activeSignalQuiet = isQuiet
 		recipient := getSignalRecipient(db)
 		signalSessionMu.Unlock()
 
@@ -2911,6 +2951,9 @@ func handleSignalCommand(db *sql.DB, i *Interaction) {
 			statusText = "Signal session activated, but no bot address discovered yet."
 		} else {
 			statusText = "Signal session activated. Waiting for incoming Signal messages to establish recipient."
+		}
+		if isQuiet {
+			statusText = strings.Replace(statusText, "Signal session activated", "Signal session activated (quiet mode)", 1)
 		}
 
 		_ = saveInteraction(db, &Interaction{

@@ -646,7 +646,7 @@ func TestRunCliClient(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Run client in background
-	go runCliClient(ctx, addr, "text", "", "sess-456", "Test Session", "/tmp", "gemini", false, false, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-456", "Test Session", "/tmp", "gemini", false, false, false, stdinReader, &stdout, &stderr)
 
 	// Give it a moment to connect
 	time.Sleep(200 * time.Millisecond)
@@ -695,7 +695,7 @@ func TestRunCliClientModes(t *testing.T) {
 	stdinReader, stdinWriter := io.Pipe()
 	var stdout, stderr bytes.Buffer
 
-	go runCliClient(ctx, addr, "json", "", "", "", "", "", false, false, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "json", "", "", "", "", "", false, false, false, stdinReader, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond) // Wait for connection
 
 	// Send JSON interaction via stdin
@@ -722,7 +722,7 @@ func TestRunCliClientModes(t *testing.T) {
 	defer cancel2()
 	stdinReader2, stdinWriter2 := io.Pipe()
 	
-	go runCliClient(ctx2, addr, "jsonr", "", "", "", "", "", false, false, stdinReader2, &stdout, &stderr)
+	go runCliClient(ctx2, addr, "jsonr", "", "", "", "", "", false, false, false, stdinReader2, &stdout, &stderr)
 	time.Sleep(300 * time.Millisecond)
 	
 	fmt.Fprintln(stdinWriter2, "Normal Msg")
@@ -1037,7 +1037,7 @@ func TestRunCliClientMetadata(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Run client with specific session, name, and model
-	go runCliClient(ctx, addr, "text", "", "sess-999", "Special Session", "/tmp", "gemini-pro", false, false, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-999", "Special Session", "/tmp", "gemini-pro", false, false, false, stdinReader, &stdout, &stderr)
 
 	// Give it a moment to connect and send registration
 	time.Sleep(300 * time.Millisecond)
@@ -1079,7 +1079,7 @@ func TestRunCliClientMetadata(t *testing.T) {
 	defer cancel2()
 	var stdout2, stderr2 bytes.Buffer
 	stdinReader2 := strings.NewReader("")
-	go runCliClient(ctx2, addr, "text", "", "sess-456", "Agy Session", "/tmp", "agy", false, false, stdinReader2, &stdout2, &stderr2)
+	go runCliClient(ctx2, addr, "text", "", "sess-456", "Agy Session", "/tmp", "agy", false, false, false, stdinReader2, &stdout2, &stderr2)
 	time.Sleep(200 * time.Millisecond)
 	cancel2()
 
@@ -2030,7 +2030,7 @@ func TestRunCliClientTmuxAgent(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Start in tmux mode, targeting a pane, specifying model 'agy'
-	go runCliClient(ctx, addr, "tmux", "test:0.0", "sess-tmux-123", "Tmux Agy Session", "/tmp", "agy", false, false, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "tmux", "test:0.0", "sess-tmux-123", "Tmux Agy Session", "/tmp", "agy", false, false, false, stdinReader, &stdout, &stderr)
 
 	// Wait for the client to register and send forwarding message
 	time.Sleep(300 * time.Millisecond)
@@ -2233,7 +2233,7 @@ func TestRunCliClientTmuxChoice(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Start in tmux mode
-	go runCliClient(ctx, addr, "tmux", "nonexistent-session:0.0", "sess-tmux-choice", "Tmux Choice Test", "/tmp", "agy", false, false, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "tmux", "nonexistent-session:0.0", "sess-tmux-choice", "Tmux Choice Test", "/tmp", "agy", false, false, false, stdinReader, &stdout, &stderr)
 
 	// Wait for registration
 	time.Sleep(300 * time.Millisecond)
@@ -2864,7 +2864,7 @@ func TestRunCliClientSignalFlag(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
 	// Start with useSignal = true
-	go runCliClient(ctx, addr, "text", "", "sess-sig-test", "Signal Session Test", "/tmp", "gemini", false, true, stdinReader, &stdout, &stderr)
+	go runCliClient(ctx, addr, "text", "", "sess-sig-test", "Signal Session Test", "/tmp", "gemini", false, true, false, stdinReader, &stdout, &stderr)
 
 	// Wait for connection and /signal command execution
 	time.Sleep(300 * time.Millisecond)
@@ -2877,6 +2877,92 @@ func TestRunCliClientSignalFlag(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("Expected 1 'Signal session activated' status interaction, got %d", count)
+	}
+}
+
+func TestSignalQuietCommand(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	sessID := "sess-quiet-test"
+
+	// 1. Initial state
+	signalSessionMu.Lock()
+	activeSignalSessionID = ""
+	activeSignalQuiet = false
+	signalSessionMu.Unlock()
+
+	// 2. Activate quiet mode
+	iCmdQuiet := Interaction{
+		SessionID: sessID,
+		Message:   "/signal quiet",
+		IsUser:    true,
+	}
+	err := saveInteraction(db, &iCmdQuiet)
+	if err != nil {
+		t.Fatalf("Failed to save quiet command: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	signalSessionMu.Lock()
+	isQuiet := activeSignalQuiet
+	activeSess := activeSignalSessionID
+	signalSessionMu.Unlock()
+
+	if activeSess != sessID {
+		t.Errorf("Expected activeSignalSessionID = %q, got %q", sessID, activeSess)
+	}
+	if !isQuiet {
+		t.Error("Expected activeSignalQuiet to be true for '/signal quiet'")
+	}
+
+	// 3. Deactivate quiet mode but keep signal active
+	iCmdNormal := Interaction{
+		SessionID: sessID,
+		Message:   "/signal",
+		IsUser:    true,
+	}
+	err = saveInteraction(db, &iCmdNormal)
+	if err != nil {
+		t.Fatalf("Failed to save normal command: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	signalSessionMu.Lock()
+	isQuiet = activeSignalQuiet
+	activeSess = activeSignalSessionID
+	signalSessionMu.Unlock()
+
+	if activeSess != sessID {
+		t.Errorf("Expected activeSignalSessionID = %q, got %q", sessID, activeSess)
+	}
+	if isQuiet {
+		t.Error("Expected activeSignalQuiet to be false for normal '/signal'")
+	}
+
+	// 4. Stop signal altogether
+	iCmdStop := Interaction{
+		SessionID: sessID,
+		Message:   "/signal stop",
+		IsUser:    true,
+	}
+	err = saveInteraction(db, &iCmdStop)
+	if err != nil {
+		t.Fatalf("Failed to save stop command: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	signalSessionMu.Lock()
+	isQuiet = activeSignalQuiet
+	activeSess = activeSignalSessionID
+	signalSessionMu.Unlock()
+
+	if activeSess != "" {
+		t.Errorf("Expected activeSignalSessionID to be empty, got %q", activeSess)
+	}
+	if isQuiet {
+		t.Error("Expected activeSignalQuiet to be false after stopping")
 	}
 }
 
