@@ -2565,7 +2565,7 @@ func TestSignalIntegration(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 
 			// Write one message envelope
-			w.Write([]byte("data: {\"jsonrpc\":\"2.0\",\"method\":\"receive\",\"params\":{\"envelope\":{\"source\":\"+1234567890\",\"sourceNumber\":\"+1234567890\",\"timestamp\":1234567890,\"dataMessage\":{\"message\":\"Hello Agent\",\"timestamp\":1234567890}}}}\n\n"))
+			w.Write([]byte("data: {\"envelope\":{\"source\":\"+1234567890\",\"sourceNumber\":\"+1234567890\",\"timestamp\":1234567890,\"dataMessage\":{\"message\":\"Hello Agent\",\"timestamp\":1234567890}}}\n\n"))
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()
 			}

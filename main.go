@@ -3089,22 +3089,19 @@ func listenSignalEvents(db *sql.DB, server, adminAddress string) error {
 			continue
 		}
 
-		var rpcMsg struct {
-			Method string `json:"method"`
-			Params struct {
-				Envelope *SignalEnvelope `json:"envelope"`
-			} `json:"params"`
+		var sseMsg struct {
+			Envelope *SignalEnvelope `json:"envelope"`
 		}
 
-		if err := json.Unmarshal([]byte(jsonData), &rpcMsg); err != nil {
+		if err := json.Unmarshal([]byte(jsonData), &sseMsg); err != nil {
 			continue
 		}
 
-		if rpcMsg.Method != "receive" || rpcMsg.Params.Envelope == nil {
+		if sseMsg.Envelope == nil {
 			continue
 		}
 
-		env := rpcMsg.Params.Envelope
+		env := sseMsg.Envelope
 		sender := env.SourceNumber
 		if sender == "" {
 			sender = env.Source
