@@ -37,6 +37,20 @@ function ChatHeader({ theme, thread, onMenu, isPhone, solo = false }) {
             <>
               <span>·</span>
               <StatusPill status={thread.active ? thread.status : 'passive'} theme={theme} />
+              {thread.signalActive && (
+                <>
+                  <span>·</span>
+                  {thread.signalQuiet ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: theme.warn }}>
+                      <IconSignalSlash size={12} /> signal (quiet)
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: theme.accent }}>
+                      <IconSignal size={12} /> signal
+                    </span>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>

@@ -3077,6 +3077,40 @@ func TestSignalQuestionSupport(t *testing.T) {
 	}
 }
 
+func TestHandleSignalStatus(t *testing.T) {
+	// Configure active Signal session
+	signalSessionMu.Lock()
+	activeSignalSessionID = "sess-status-test-123"
+	activeSignalQuiet = true
+	signalSessionMu.Unlock()
+
+	req, err := http.NewRequest("GET", "/signal/status", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(handleSignalStatus)
+	handler.ServeHTTP(rr, req)
+
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	var resp map[string]interface{}
+	err = json.NewDecoder(rr.Body).Decode(&resp)
+	if err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp["activeSessionID"] != "sess-status-test-123" {
+		t.Errorf("Expected activeSessionID 'sess-status-test-123', got %q", resp["activeSessionID"])
+	}
+	if resp["quiet"] != true {
+		t.Errorf("Expected quiet true, got %v", resp["quiet"])
+	}
+}
+
 
 
 

@@ -320,6 +320,7 @@ func main() {
 	http.HandleFunc("/service", handleService(db))
 	http.HandleFunc("/subscribe", handleSubscribe(db))
 	http.HandleFunc("/rename-session", handleRenameSession(db))
+	http.HandleFunc("/signal/status", handleSignalStatus)
 	http.HandleFunc("/vapid-public-key", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"publicKey": vapidPublicKey})
@@ -3211,6 +3212,19 @@ type SignalEnvelope struct {
 		Message   string `json:"message"`
 		Timestamp int64  `json:"timestamp"`
 	} `json:"dataMessage"`
+}
+
+func handleSignalStatus(w http.ResponseWriter, r *http.Request) {
+	signalSessionMu.Lock()
+	activeSess := activeSignalSessionID
+	quiet := activeSignalQuiet
+	signalSessionMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"activeSessionID": activeSess,
+		"quiet":           quiet,
+	})
 }
 
 type SignalReceiveItem struct {
