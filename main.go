@@ -3045,7 +3045,18 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 	var msgText string
 	var detailedMsg string
 	var imagesStr sql.NullString
-	err := db.QueryRow("SELECT message, detailed_message, images FROM interactions WHERE session_id = ? AND is_user = 0 AND kind = 'agent' ORDER BY id DESC LIMIT 1", sessionID).Scan(&msgText, &detailedMsg, &imagesStr)
+	var status string
+	var err error
+
+	// Wait up to 1 second for the final agent response to be saved/finalized (status == "d")
+	for retry := 0; retry < 10; retry++ {
+		err = db.QueryRow("SELECT message, detailed_message, images, status FROM interactions WHERE session_id = ? AND is_user = 0 AND kind = 'agent' ORDER BY id DESC LIMIT 1", sessionID).Scan(&msgText, &detailedMsg, &imagesStr, &status)
+		if err == nil && status == "d" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
 	if err != nil {
 		log.Printf("Signal: failed to query last agent message for session %s: %v", sessionID, err)
 		return
