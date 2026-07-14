@@ -3111,6 +3111,59 @@ func TestHandleSignalStatus(t *testing.T) {
 	}
 }
 
+func TestRemoteIconURL(t *testing.T) {
+	staticRoot, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		t.Fatalf("Failed to get static sub FS: %v", err)
+	}
+
+	// Set the global customIconURL
+	oldURL := customIconURL
+	customIconURL = "https://example.com/custom-remote-logo.png"
+	defer func() {
+		customIconURL = oldURL
+	}()
+
+	// 1. Test index.html replacement
+	data, _, _, err := getStaticContent(staticRoot, "/", "", true, false)
+	if err != nil {
+		t.Fatalf("Failed to get index.html: %v", err)
+	}
+	htmlStr := string(data)
+	if !strings.Contains(htmlStr, `href="https://example.com/custom-remote-logo.png"`) {
+		t.Error("index.html did not replace icon.png with remote URL")
+	}
+	if !strings.Contains(htmlStr, `src: 'https://example.com/custom-remote-logo.png'`) {
+		t.Error("index.html did not replace APP_ICON src with remote URL")
+	}
+
+	// 2. Test manifest.json replacement
+	data, _, _, err = getStaticContent(staticRoot, "/manifest.json", "", true, false)
+	if err != nil {
+		t.Fatalf("Failed to get manifest.json: %v", err)
+	}
+	manifestStr := string(data)
+	if !strings.Contains(manifestStr, `"https://example.com/custom-remote-logo.png"`) {
+		t.Error("manifest.json did not replace icon paths with remote URL")
+	}
+	if strings.Contains(manifestStr, `"/icon.png"`) || strings.Contains(manifestStr, `"/icon.svg"`) {
+		t.Error("manifest.json still contains local icon paths")
+	}
+
+	// 3. Test sw.js replacement
+	data, _, _, err = getStaticContent(staticRoot, "/sw.js", "", true, false)
+	if err != nil {
+		t.Fatalf("Failed to get sw.js: %v", err)
+	}
+	swStr := string(data)
+	if !strings.Contains(swStr, `'https://example.com/custom-remote-logo.png'`) {
+		t.Error("sw.js did not replace icon path with remote URL")
+	}
+	if strings.Contains(swStr, `'/icon.png'`) {
+		t.Error("sw.js still contains local /icon.png path")
+	}
+}
+
 
 
 

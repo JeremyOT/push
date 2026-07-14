@@ -108,6 +108,7 @@ var vapidPrivateKey string
 var vapidPublicKey string
 var serverHostname string
 var customIcons = make(map[string][]byte)
+var customIconURL string
 var activeSessions = make(map[string]int)
 var sessionsMu sync.Mutex
 
@@ -302,8 +303,12 @@ func main() {
 	}
 
 	if *iconPath != "" {
-		if err := loadCustomIcons(*iconPath); err != nil {
-			log.Fatalf("Failed to load custom icons: %v", err)
+		if strings.HasPrefix(*iconPath, "http://") || strings.HasPrefix(*iconPath, "https://") {
+			customIconURL = *iconPath
+		} else {
+			if err := loadCustomIcons(*iconPath); err != nil {
+				log.Fatalf("Failed to load custom icons: %v", err)
+			}
 		}
 	}
 
@@ -377,8 +382,15 @@ func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomI
 				content = strings.ReplaceAll(content, "<h1>Push</h1>", "<h1>"+appTitle+"</h1>")
 			}
 			if hasCustomIcon {
-				content = strings.ReplaceAll(content, "icon.svg", "icon.png")
-				content = strings.ReplaceAll(content, "type=\"image/svg+xml\"", "type=\"image/png\"")
+				if customIconURL != "" {
+					content = strings.ReplaceAll(content, `href="icon.png"`, `href="`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `href="/icon.png"`, `href="`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `href="/apple-touch-icon.png"`, `href="`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `src: 'icon.svg'`, `src: '`+customIconURL+`'`)
+				} else {
+					content = strings.ReplaceAll(content, "icon.svg", "icon.png")
+					content = strings.ReplaceAll(content, "type=\"image/svg+xml\"", "type=\"image/png\"")
+				}
 			}
 			if interactive {
 				content = strings.ReplaceAll(content, `{"interactive": false}`, `{"interactive": true}`)
@@ -389,13 +401,24 @@ func getStaticContent(staticRoot fs.FS, path string, appTitle string, hasCustomI
 				content = strings.ReplaceAll(content, `"short_name": "Push"`, `"short_name": "`+appTitle+`"`)
 			}
 			if hasCustomIcon {
-				content = strings.ReplaceAll(content, "/icon.svg", "/icon.png")
-				content = strings.ReplaceAll(content, "image/svg+xml", "image/png")
+				if customIconURL != "" {
+					content = strings.ReplaceAll(content, `"/icon-128.png"`, `"`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `"/icon-192.png"`, `"`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `"/icon.png"`, `"`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `"/apple-touch-icon.png"`, `"`+customIconURL+`"`)
+					content = strings.ReplaceAll(content, `"/icon.svg"`, `"`+customIconURL+`"`)
+				} else {
+					content = strings.ReplaceAll(content, "/icon.svg", "/icon.png")
+					content = strings.ReplaceAll(content, "image/svg+xml", "image/png")
+				}
 			}
 		} else if path == "sw.js" {
 			if appTitle != "" {
 				content = strings.ReplaceAll(content, "let title = 'Push';", "let title = '"+appTitle+"';")
 				content = strings.ReplaceAll(content, "title = data.title || 'Push';", "title = data.title || '"+appTitle+"';")
+			}
+			if hasCustomIcon && customIconURL != "" {
+				content = strings.ReplaceAll(content, `'/icon.png'`, `'`+customIconURL+`'`)
 			}
 		}
 		return []byte(content), mime.TypeByExtension(filepath.Ext(path)), stat.ModTime(), nil
