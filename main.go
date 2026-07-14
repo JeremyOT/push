@@ -3090,8 +3090,8 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 		if wasWaiting {
 			_ = deleteSignalReaction(*signalServer, "", recipient, "👀", sender, timestamp)
 			_ = sendSignalReaction(*signalServer, "", recipient, "✅", sender, timestamp)
-			_ = setSignalTyping(*signalServer, "", recipient, false)
 		}
+		_ = setSignalTyping(*signalServer, "", recipient, false)
 		_ = sendSignalMessageWithAttachments(*signalServer, "", recipient, finalText, attachments)
 	}()
 }

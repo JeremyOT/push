@@ -133,6 +133,8 @@ go build -ldflags="-w -s" -o push main.go
 - Generated custom premium app icons `term.png`, `term-simple.png`, and `term-full.png` representing a terminal remote control service. `term.png` features an obsidian glass tile with a glowing cyan-to-purple prompt glyph on a black background, `term-simple.png` is a clean, flat full-bleed design, and `term-full.png` is a more complex full-bleed design featuring perspective grid borders.
 - Updated the Signal integration to support sending images. When forwarding agent responses, questions, or approvals, the server retrieves any associated embedded images (both local base64-encoded and remote public URL images), downloads/decodes them to temporary files, forwards them as attachments using the `attachments` array in the JSON-RPC send command, and cleans up the temporary files once the transmission is complete. Added the `TestSignalImageSupport` unit test.
 - Fixed a race condition in `handleSignalReadyState` where a `Ready` status update posted concurrently with the finalized agent response would query the database and trigger the Signal response before the agent interaction (with its newly-processed base64/remote image attachments) was fully written to the database. Added a retry/polling loop that waits up to 1 second for the latest agent response in the database to reach status `"d"` (done) before loading and transmitting it.
+- Updated the Signal integration to unconditionally clear the typing indicator (`setSignalTyping` to `false`) for the active recipient in `handleSignalReadyState` once the agent finishes execution, regardless of whether the message was initiated via Signal or the Web UI.
+
 
 
 
