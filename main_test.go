@@ -3164,6 +3164,126 @@ func TestRemoteIconURL(t *testing.T) {
 	}
 }
 
+func TestSignalImageSupport(t *testing.T) {
+	db, tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+	defer db.Close()
+
+	sessID := "sess-image-test"
+
+	// Mock signalServer to route to a local test HTTP server
+	var receivedMsg string
+	var attachmentContents []string
+	var msgMu sync.Mutex
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/rpc" {
+			var req map[string]interface{}
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			method, _ := req["method"].(string)
+			if method == "send" {
+				params, _ := req["params"].(map[string]interface{})
+				msgStr, _ := params["message"].(string)
+
+				var attachs []string
+				if rawAttachs, ok := params["attachments"].([]interface{}); ok {
+					for _, rawPath := range rawAttachs {
+						if pathStr, ok := rawPath.(string); ok {
+							data, err := os.ReadFile(pathStr)
+							if err == nil {
+								attachs = append(attachs, string(data))
+							} else {
+								attachs = append(attachs, fmt.Sprintf("error: %v", err))
+							}
+						}
+					}
+				}
+
+				msgMu.Lock()
+				receivedMsg = msgStr
+				attachmentContents = attachs
+				msgMu.Unlock()
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"jsonrpc":"2.0","result":{"uuid":"123"},"id":"1"}`))
+			return
+		}
+		// Also support serving the remote image download request
+		if r.URL.Path == "/test-remote-image.png" {
+			w.Header().Set("Content-Type", "image/png")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("fake-remote-png-bytes"))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer testServer.Close()
+
+	// Update global signal server address to point to our test server
+	oldServer := *signalServer
+	oldAddress := *signalAddress
+	oldActiveSession := activeSignalSessionID
+	*signalServer = strings.TrimPrefix(testServer.URL, "http://")
+	*signalAddress = "+12067249832"
+	activeSignalSessionID = sessID
+	defer func() {
+		*signalServer = oldServer
+		*signalAddress = oldAddress
+		activeSignalSessionID = oldActiveSession
+	}()
+
+	// Register recipient
+	_, _ = db.Exec("INSERT INTO interactions (session_id, is_user, title, message, status, kind, timestamp) VALUES (?, 1, '+12067249832', '/signal', 'r', 'user', ?)", sessID, time.Now().UTC())
+	setSignalRecipient(db, "+12067249832")
+
+	// Create a test interaction with:
+	// - a base64 encoded image
+	// - a remote image URL served by our test server
+	remoteImgURL := testServer.URL + "/test-remote-image.png"
+	imagesList := []EmbeddedImage{
+		{
+			Source: "local-image.png",
+			Data:   "data:image/png;base64,ZmFrZS1sb2NhbC1wbmctYnl0ZXM=", // base64 encoded "fake-local-png-bytes"
+		},
+		{
+			Source: "remote-image.png",
+			Data:   remoteImgURL,
+		},
+	}
+	imagesBytes, _ := json.Marshal(imagesList)
+
+	_, err := db.Exec("INSERT INTO interactions (session_id, is_user, title, message, status, kind, timestamp, images) VALUES (?, 0, 'agent', 'Here is the response with images', 'r', 'agent', ?, ?)", sessID, time.Now().UTC(), string(imagesBytes))
+	if err != nil {
+		t.Fatalf("Failed to insert agent interaction: %v", err)
+	}
+
+	// Trigger ready state which should send the last agent message to Signal client
+	handleSignalReadyState(db, sessID)
+
+	// Wait for async goroutine to execute send
+	time.Sleep(200 * time.Millisecond)
+
+	msgMu.Lock()
+	mMsg := receivedMsg
+	mAttachContents := attachmentContents
+	msgMu.Unlock()
+
+	if mMsg != "Here is the response with images" {
+		t.Errorf("Expected message 'Here is the response with images', got %q", mMsg)
+	}
+
+	if len(mAttachContents) != 2 {
+		t.Errorf("Expected 2 attachments, got %d", len(mAttachContents))
+	} else {
+		if mAttachContents[0] != "fake-local-png-bytes" {
+			t.Errorf("Expected attachment 1 content 'fake-local-png-bytes', got %q", mAttachContents[0])
+		}
+		if mAttachContents[1] != "fake-remote-png-bytes" {
+			t.Errorf("Expected attachment 2 content 'fake-remote-png-bytes', got %q", mAttachContents[1])
+		}
+	}
+}
+
 
 
 

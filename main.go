@@ -3044,10 +3044,16 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 
 	var msgText string
 	var detailedMsg string
-	err := db.QueryRow("SELECT message, detailed_message FROM interactions WHERE session_id = ? AND is_user = 0 AND kind = 'agent' ORDER BY id DESC LIMIT 1", sessionID).Scan(&msgText, &detailedMsg)
+	var imagesStr sql.NullString
+	err := db.QueryRow("SELECT message, detailed_message, images FROM interactions WHERE session_id = ? AND is_user = 0 AND kind = 'agent' ORDER BY id DESC LIMIT 1", sessionID).Scan(&msgText, &detailedMsg, &imagesStr)
 	if err != nil {
 		log.Printf("Signal: failed to query last agent message for session %s: %v", sessionID, err)
 		return
+	}
+
+	var images []EmbeddedImage
+	if imagesStr.Valid && imagesStr.String != "" {
+		_ = json.Unmarshal([]byte(imagesStr.String), &images)
 	}
 
 	finalText := detailedMsg
@@ -3059,12 +3065,23 @@ func handleSignalReadyState(db *sql.DB, sessionID string) {
 	}
 
 	go func() {
+		var attachments []string
+		var cleanups []func()
+		if len(images) > 0 {
+			attachments, cleanups = prepareSignalAttachments(images)
+		}
+		defer func() {
+			for _, cleanup := range cleanups {
+				cleanup()
+			}
+		}()
+
 		if wasWaiting {
 			_ = deleteSignalReaction(*signalServer, "", recipient, "👀", sender, timestamp)
 			_ = sendSignalReaction(*signalServer, "", recipient, "✅", sender, timestamp)
 			_ = setSignalTyping(*signalServer, "", recipient, false)
 		}
-		_ = sendSignalMessage(*signalServer, "", recipient, finalText)
+		_ = sendSignalMessageWithAttachments(*signalServer, "", recipient, finalText, attachments)
 	}()
 }
 
@@ -3142,7 +3159,18 @@ func handleSignalQuestion(db *sql.DB, i *Interaction) {
 	sentQuestionsMu.Unlock()
 
 	go func() {
-		_ = sendSignalMessage(*signalServer, "", recipient, sb.String())
+		var attachments []string
+		var cleanups []func()
+		if len(i.Images) > 0 {
+			attachments, cleanups = prepareSignalAttachments(i.Images)
+		}
+		defer func() {
+			for _, cleanup := range cleanups {
+				cleanup()
+			}
+		}()
+
+		_ = sendSignalMessageWithAttachments(*signalServer, "", recipient, sb.String(), attachments)
 	}()
 }
 
@@ -3189,11 +3217,92 @@ func sendSignalRPC(server, method string, params map[string]interface{}) error {
 }
 
 func sendSignalMessage(server, from, to, msg string) error {
+	return sendSignalMessageWithAttachments(server, from, to, msg, nil)
+}
+
+func sendSignalMessageWithAttachments(server, from, to, msg string, attachments []string) error {
 	params := map[string]interface{}{
 		"recipient": []string{to},
 		"message":   msg,
 	}
+	if len(attachments) > 0 {
+		params["attachments"] = attachments
+	}
 	return sendSignalRPC(server, "send", params)
+}
+
+func prepareSignalAttachments(images []EmbeddedImage) ([]string, []func()) {
+	var paths []string
+	var cleanups []func()
+
+	for idx, img := range images {
+		if strings.HasPrefix(img.Data, "http://") || strings.HasPrefix(img.Data, "https://") {
+			tmpFile, err := os.CreateTemp("", fmt.Sprintf("signal-attach-remote-%d-*.png", idx))
+			if err != nil {
+				log.Printf("Failed to create temporary file for remote image: %v", err)
+				continue
+			}
+			tmpPath := tmpFile.Name()
+			tmpFile.Close()
+
+			resp, err := http.Get(img.Data)
+			if err != nil {
+				log.Printf("Failed to download remote image %s: %v", img.Data, err)
+				os.Remove(tmpPath)
+				continue
+			}
+			data, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				log.Printf("Failed to read downloaded remote image %s: %v", img.Data, err)
+				os.Remove(tmpPath)
+				continue
+			}
+
+			if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+				log.Printf("Failed to write temporary file %s: %v", tmpPath, err)
+				os.Remove(tmpPath)
+				continue
+			}
+
+			paths = append(paths, tmpPath)
+			cleanups = append(cleanups, func() {
+				os.Remove(tmpPath)
+			})
+		} else if strings.HasPrefix(img.Data, "data:") {
+			parts := strings.SplitN(img.Data, ",", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			base64Data := parts[1]
+			decoded, err := base64.StdEncoding.DecodeString(base64Data)
+			if err != nil {
+				log.Printf("Failed to decode base64 image: %v", err)
+				continue
+			}
+
+			tmpFile, err := os.CreateTemp("", fmt.Sprintf("signal-attach-local-%d-*.png", idx))
+			if err != nil {
+				log.Printf("Failed to create temporary file for local image: %v", err)
+				continue
+			}
+			tmpPath := tmpFile.Name()
+			_ = tmpFile.Close()
+
+			if err := os.WriteFile(tmpPath, decoded, 0644); err != nil {
+				log.Printf("Failed to write temporary file %s: %v", tmpPath, err)
+				os.Remove(tmpPath)
+				continue
+			}
+
+			paths = append(paths, tmpPath)
+			cleanups = append(cleanups, func() {
+				os.Remove(tmpPath)
+			})
+		}
+	}
+
+	return paths, cleanups
 }
 
 func sendSignalReaction(server, from, recipient, emoji, targetAuthor string, targetTimestamp int64) error {
